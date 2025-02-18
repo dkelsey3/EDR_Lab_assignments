@@ -16,6 +16,8 @@ colorlinks: true
 
 
 
+
+
 # Lab 02: R as a GIS
 
 ### Read the instructions COMPLETELY before starting the lab
@@ -65,14 +67,12 @@ t.names <- tibble(key = c(1, 2, 3),
 t.scores <- tibble(name = c("Louis", "Huey", "Dewey"),
                    grade = c(99, 45, 33))
 
-# combined them
+# join them together using a common variable, in this case the "name" variable
 t.joined <- left_join(t.names, t.scores, by = "name")
 t.joined
-
-#If there is something similar that binds the two datasets, hence the name column, you can use the column to bind the datasets. 
 ```
 
-A "left join" finds starts with the table on the "left" and then finds matches in the table on the "right". See the documentation using ```?left_join``` for more details and for other types of joins. Sometimes the attributes you're using to join the tables won't have the same name, in which case the syntax is different:
+A "left join" finds starts with the table on the "left" and then finds matches in the table on the "right". See the documentation using ```?left_join``` for more details and for other types of joins. Sometimes the attributes you're using to join the tables won't have the same name, in which case the you need to tell the join function which variables to join on. Note the difference in the `by` argument in the below code block compared to the one above.
 
 ```{r diff syntax, echo=TRUE, message=TRUE}
 
@@ -93,7 +93,7 @@ This dataset includes a list of best management practices ("BMPs") to reduce nut
 bmps <- read_csv("BMPreport2016_landbmps.csv")
 
 glimpse(bmps)
-#Delimiter: Data fields are separated by characters to indicate a structure of columns and rows
+
 ```
 
 Look at the attribute "GeographyName" - it's a character attribute that contains the counties' FIPS code, but also some ancillary explanatory data we need to get rid of. There are multiple ways of doing so, including some (very) fancy automated methods that detect patterns of numbers and characters. We're going to take a simpler approach and assume that all FIPS codes are only 5 characters long.
@@ -104,7 +104,7 @@ Look at the attribute "GeographyName" - it's a character attribute that contains
 bmps <- bmps %>% mutate(., FIPS.trimmed = stringr::str_sub(GeographyName, 1, 5))
 ```
 
-This can be sueful when you're trying to create "keys" by which to join tables or just clean your tables in general
+This preparing raw data for further analysis is called "munging". While the term isn't the important part, these kinds of preparatory steps can be useful when you're trying to create "keys" by which to join tables or just clean your tables in general.
 
 Let's recall how to do some simple tasks
 
@@ -116,11 +116,13 @@ bmps %>% group_by(BMPType) %>% summarise(totalCost = sum(Cost)) %>%
   geom_bar(stat = "identity") +
   theme_minimal()
 
-# Doesn't really work. This is because there are missing data in the cost attribute. Let's look at it (and this is why we do exploratory data analysis first)
+# Doesn't really work. This is because there are missing data in the cost attribute. 
+# Let's look at it (and this is why we do exploratory data analysis first)
 
 summary(bmps$Cost)
 
-# Yup, lots of "NA's"... We can drop them in our analysis. Look carefully at the code in the 'sum' function
+# Yup, lots of "NA's"... We can drop them in our analysis. 
+# Look carefully at the code in the 'sum' function. What is the na.rm = T parameter doing?
 
 
 bmps %>% group_by(BMPType) %>% summarise(totalCost = sum(Cost, na.rm = T)) %>%
@@ -134,7 +136,10 @@ We can also group by multiple variables at the same time. For example:
 
 ```{r review2, echo=TRUE, message=TRUE}
 # group by state and sector, sum total cost
-twofactors <- bmps %>% group_by(StateAbbreviation, Sector) %>% summarise(totalCost = sum(Cost))
+twofactors <- bmps %>% group_by(StateAbbreviation, Sector) %>% 
+  summarise(totalCost = sum(Cost))
+
+twofactors
 
 ```
 
@@ -146,13 +151,15 @@ For our last bit of review, let's make a few box plots:
 bmps %>% ggplot(., aes(x = StateAbbreviation, y = AmountCredited)) +
   geom_boxplot(aes(fill = StateAbbreviation))
 
-# Very heavily skewed, so just for the sake of visualization, let's subset the data (dramatically)
+# Very heavily skewed, so just for the sake of visualization, 
+# let's subset the data (dramatically)
 bmps %>% 
   dplyr::filter(., AmountCredited > 1 & AmountCredited < 100) %>% 
   ggplot(., aes(x = StateAbbreviation, y = AmountCredited)) +
   geom_boxplot(aes(fill = StateAbbreviation))
 
-# We can also plot multiple dimensions in our plot using the `facet` family of commands in ggplot
+# We can also plot multiple dimensions in our plot using 
+# the `facet` family of commands in ggplot
 
 bmps %>% 
   dplyr::filter(., AmountCredited > 1 & AmountCredited < 100) %>% 
@@ -177,9 +184,9 @@ The last new item uses the ```%in%``` command. It's a way to quickly figure out 
 x <- c(1, 2, 3, 4, 5)
 
 # is 7 in our vector?
-7 %in% x # should be False
+7 %in% x # should evaluate False
 
-2 %in% x # should be True
+2 %in% x # should evaluate True
 
 # can also do it with vectors
 c(4, 99, 1) %in% x
@@ -189,7 +196,6 @@ c(4, 99, 1) %in% x
 Lastly, let's recall using tmap on our data. Also remember you can use ```sf::st_make_valid``` to fix offending geometry
 
 ```{r remembering tmap, echo=TRUE, message=TRUE}
-getwd()
 
 counties <- sf::read_sf("County_Boundaries.shp")
 counties %>% sf::st_is_valid()
@@ -208,12 +214,18 @@ Using the following data...
 ```{r tasksetup, echo=TRUE, message=TRUE}
 
 # spatial
-counties <- sf::read_sf("County_Boundaries.shp") %>% sf::st_make_valid()
-dams <- sf::read_sf("Dam_or_Other_Blockage_Removed_2012_2017.shp") %>% sf::st_make_valid()
-streams <- sf::read_sf("Streams_Opened_by_Dam_Removal_2012_2017.shp") %>% sf::st_make_valid()
+# Note, the st_make_valid() calls are NOT necessary in all cases
+# But we know it's needed for the counties, and doesn't really hurt anything
+# for the others
+counties <- sf::read_sf("County_Boundaries.shp") %>% 
+  sf::st_make_valid()
+dams <- sf::read_sf("Dam_or_Other_Blockage_Removed_2012_2017.shp") %>% 
+  sf::st_make_valid()
+streams <- sf::read_sf("Streams_Opened_by_Dam_Removal_2012_2017.shp") %>% 
+  sf::st_make_valid()
 
 # aspatial
-bmps <- read_csv("../data/CBW/BMPreport2016_landbmps.csv")
+bmps <- read_csv("BMPreport2016_landbmps.csv")
 ```
 
 ...complete the following tasks.
@@ -224,32 +236,76 @@ Complete each task COMPLETELY USING R CODE. YOU MUST SHOW YOUR WORK FOR EACH ANS
 
 ```{r}
 #1.1 Calculate summary statistics for the Cost of BMPs for each State (including DC)
+#Use bmps 
+bmps
 
+bmps %>% dplyr::filter(!is.na(Cost)) %>% group_by(StateAbbreviation) %>% 
+  summarise(mean = mean(Cost),
+            median = median(Cost),
+            max = max(Cost),
+            min = min(Cost))
 ```
 
-```{r}
+```{r Need to ask Dr. Bitterman}
 #1.2 Make a scatterplot of Cost vs. TotalAmountCredited, ONLY FOR Units of type "Acres". You may need to apply a data transformation to one or more axes if the data are heavily skewed.
+bmps
 
+bmp.acres <- bmps %>% dplyr::filter(., Unit == "Acres")
+bmp.acres
 
-```
+bmp.acres %>% ggplot(., aes(x = Cost, y = TotalAmountCredited)) +
+  geom_point() +
+  #scale_x_log10() + scale_y_log10() +
+  labs(y = "Total Amount Credited")
 
-
-```{r}
-#1.3 Make a boxplot with "StateAbbreviation" on the x-axis and "TotalAmountCredited" on the y-axis. HOWEVER, the only data I want plotted are for cover crop BMPs. Note, there are many types of cover crops in this dataset, and I want you to include them ALL. There are handy functions within the ```stringr``` package that can help you here.
-
-
-```
-
-
-```{r}
-#1.4 make a scatterplot of the dam dataset, this time with "YEAR" on the x-axis and "STATE" on y-axis (think of it like a timeline). Assume no dams were built in year 0, so you'll need to remove those data points.
-
+#Do both axes need a log?
 
 ```
 
 
 ```{r}
+#1.3 Make a boxplot with "StateAbbreviation" on the x-axis and "TotalAmountCredited" on the y-axis. HOWEVER, the only data I want plotted are for cover crop BMPs. Note, there are many types of cover crops in this dataset, and I want you to include them ALL. There are handy functions within the ```stringr``` package that can help you here. Use the help function ```?stringr``` or read the documentations/vignettes found online. A Google search for "r stringr vignettes documentation" would be a good place to start if you're having trouble.
+bmps
+
+#bmps %>% mutate(covercrop = str_count(BMP, "Cover Crop")) %>% summarize(max = max(covercrop)) 
+#Checked to make sure that I could filter correctly.
+
+bmps %>% 
+  mutate(
+    covercrop = str_count(BMP, "Cover Crop"),
+  )%>% dplyr::filter(covercrop == 1) %>% 
+  ggplot(., aes(x = StateAbbreviation, y= TotalAmountCredited)) +
+  geom_boxplot(aes(fill = StateAbbreviation))
+
+```
+
+
+```{r}
+#1.4 make a scatterplot of the `dam` dataset, this time with "YEAR" on the x-axis and "STATE" on y-axis (think of it like a timeline). Assume no dams were built in year 0, so you'll need to remove those data points. You know how to remove observations based on a given criteria.
+dams
+
+dams.filt <- dams %>% dplyr::filter(., YEAR != "0" & YEAR != "NA")
+dams.filt
+
+dams.filt %>% ggplot(., aes(x = YEAR, y = STATE)) +
+  geom_point() +
+  labs(title= "Dams built",x= "Year", y = "State")
+
+```
+
+
+```{r Need to think this through}
 #1.5 make one last (aspatial) visualization. But this time, it's your choice what data and plots to use. The only requirement is that you link two of the datasets together in some manner. Be creative. Make it look nice (e.g., use proper labels, interesting colors/shading/size).
+bmps
+counties
+#Want to link these two together.
+
+bmps %>% 
+  mutate(
+  wetland = str_count(BMP, "Wetlands"),
+  ) %>% dplyr::filter(wetland == 1) 
+#%>% ggplot(., aes(x = StateAbbreviation, y= Cost)) +
+  #geom_boxplot(aes(fill = StateAbbreviation))
 
 ```
 
@@ -257,24 +313,54 @@ Complete each task COMPLETELY USING R CODE. YOU MUST SHOW YOUR WORK FOR EACH ANS
 
 ```{r}
 #2.1 Find the 5 longest streams in the 'streams opened by dam removal' dataset
+streams
+
+#LengthKM
+
+#sort by Length KM
+#Pull first 5 columns
+
+streams %>% dplyr::arrange(desc(LengthKM)) %>% slice(1:5)
 ```
 
 ```{r}
 #2.2 Find the three counties with the greatest TOTAL length of streams (opened by dam removal) in them
+#join counties and streams
+#Next, group the counties
+#Calculate the total length 
+#arrange then slice
+
+st.co <- sf::st_intersection(streams, counties)
+str(st.co)
+
+st.co %>% as_tibble() %>% dplyr::select(-geometry) %>% group_by(COUNTYFP10) %>% summarise(totallength = sum(LengthKM)) %>% dplyr::arrange(desc(totallength)) %>% slice(1:3)
 ```
 
-```{r}
+```{r Need input on how to do this}
 #2.3 Make a map of the counties, shading each county by the total cost of BMPs funded/implemented in that county. This will required you to join multiple datasets together
+bmps
+counties
+tm_shape(counties) + tm_polygons(fill = "STATEFP10")
+
+  
 ```
 
-```{r}
+```{r Will need help}
 #2.4 For each removed dam, find the closest stream segment
+dams
+streams
+#plot(dams)
+#plot(streams)
 
+sf::st_distance(streams, dams) %>% as_tibble() %>% dplyr::arrange(across(everything()))
+#34 dams                                                                  
 ```
 
 ```{r}
 #2.5 Calculate how many removed dams are (or were) in each state
+dams
 
+dams %>% as_tibble() %>% dplyr::select(-geometry) %>% group_by(STATE) %>% dplyr::count()
 ```
 
 
