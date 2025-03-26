@@ -59,7 +59,7 @@ First, let's read the layer that has the geometry in this gdb file.
 
 ```{r data, echo=TRUE, message = TRUE}
 getwd()
-
+#NOTE TO USER: YOU WILL NEED TO DOWNLOAD THE DATA AS IT IS TOO LARGE FOR GIT HUB!!
 d.all <- sf::read_sf("ACS_2020_5YR_COUNTY.gdb", layer = "ACS_2020_5YR_COUNTY")
 glimpse(d.all)
 
@@ -281,27 +281,29 @@ moran.plot(kotwv.projected$B01001Ge17, lw.ko, zero.policy=TRUE, plot=TRUE)
 
 ```
 
-6. Repeat #5 (and 5.1 - 5.4) above with a W developed using the IDW method. You will need to investigate the `spdep` documentation to find the correct method/function.
+```{r}
+#6. Repeat #5 (and 5.1 - 5.4) above with a W developed using the IDW method. You will need to investigate the `spdep` documentation to find the correct method/function.
+
+```
 
 
 ## Questions:
 
 1. Describe in your own words how Moran’s I is calculated
 
-
+Moran's I is measuring autocorrelation by using both dependency of variables and coefficients. Moran's I is the measurement of the likelihood of nearby polygons to be related. The way this is measured is by using Moran's coefficient. Moran's coefficient: I = n/∑i∑jwij*∑i∑jwij(zi-z̄)(zj-z̄)/∑i(zi-z̄)^2. Where i and j represent the locations of interest, wij specifies the dependency or spatial weight between the locations of interest, z̄ is the mean of the two variable of interest, zi and zj represents the value of the variables at the locations of interest, n is the number of features, and ∑i∑jwij is the sum of all the spatial weights. When I > 0, there is positive spatial autocorrelation. When I < 0, there is negative spatial autocorrelation. Finally, when I = 0, there is no spatial autocorrelation.  
 
 2. Describe in your own words: what is a spatially-lagged variable?
 
+A spatially lagged variable is the product of a spatial weight matrix, measuring the variable's behavior in the neighborhood of a given observation. The spatially lagged variable is the average of the variable within a neighborhood. 
 
-
-3. How does your analysis in this lab (as simple as it is) diffr by how you have formalized W (e.g., space, neighbors) in two diﬀerent methods? How might it affect analysis?
-
-
-
-4. What does it mean if an observation falls in the “H-L” quadrant? Why might it be useful to detect such occurances?
+3. How does your analysis in this lab (as simple as it is) differ by how you have formalized W (e.g., space, neighbors) in two diﬀerent methods? How might it affect analysis?
 
 
 
+4. What does it mean if an observation falls in the “H-L” quadrant? Why might it be useful to detect such occurrences?
+
+If an observation falls in the H-L quadrant, this indicates high values above average surrounded by values below average within the Moran plot. These are often associated with outliers. This is useful to detect if the values fall outside of the neighborhood. 
 
 ## Bonus (+50 points)
 
