@@ -1,0 +1,63 @@
+---
+title: "PredictingSPSC"
+author: "Daiyanera Kelsey"
+date: "2025-03-07"
+output: html_document
+---
+
+```{r}
+library(raster)
+library(tidyverse)
+library(sf)
+library(terra)
+library(dplyr)
+library(spData)
+```
+
+```{r}
+getwd()
+PWS_pool <- "Pool.shp"
+PWS_elev <- "Elevation.shp"
+
+p.PWS <- sf::read_sf(PWS_pool)
+e.PWS <- sf::read_sf(PWS_elev)
+
+glimpse(p.PWS)
+glimpse(e.PWS)
+
+p.PWS %>% sf::st_is_valid()
+e.PWS %>% sf::st_is_valid()
+
+plot(p.PWS)
+plot(e.PWS)
+#Need to combine shapefiles!
+
+PWS_bind <- rbind(p.PWS, e.PWS)
+
+plot(PWS_bind)
+#Checking to see if they combined and they did :D
+
+PWS.transform <- PWS_bind %>% sf::st_transform(., crs = 3857)
+
+plot(PWS.transform)
+#24 geometries
+```
+
+```{r Randomized point distribution within polygons}
+#Creating points
+
+PWS.point.random <- st_sample(PWS.transform, size = c(3,3), type = "random", crs = 4326)
+plot(PWS.point.random)
+# Create the random points (here, 3 random points for each polygon)
+# 3*24=72 sampling points within the site.
+
+
+#Need to look into how to combine points and geometry
+
+```
+
+```{r}
+
+
+
+```
