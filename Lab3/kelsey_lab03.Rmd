@@ -246,6 +246,7 @@ tm_shape(kotvw) + tm_polygons(fill = "normalized_by_population")
 #5. Develop a contiguity-based spatial weights matrix of your choosing (i.e., rook or queen)
 #Note from Dr. Bitterman, develop a weights matrix for a portion of the study area
 
+
 sf::st_crs(kotvw)
 # then reproject to north american equidistant conic
 kotwv.projected <- kotvw %>% sf::st_transform(., "ESRI:102010")
@@ -284,6 +285,43 @@ moran.plot(kotwv.projected$B01001Ge17, lw.ko, zero.policy=TRUE, plot=TRUE)
 ```{r}
 #6. Repeat #5 (and 5.1 - 5.4) above with a W developed using the IDW method. You will need to investigate the `spdep` documentation to find the correct method/function.
 
+sf::st_crs(kotvw)
+# then reproject to north american equidistant conic
+kotwv.projected <- kotvw %>% sf::st_transform(., "ESRI:102010")
+# plot it again to make sure nothing broke
+tmap::tm_shape(kotwv.projected) + tm_polygons()
+
+  #1. Row-standardize the W
+
+# make the neighborhood
+nb.ko <- spdep::poly2nb(kotwv.projected, queen = TRUE)
+nb.ko[[1]]
+
+lw.ko.idw <- nb2listwdist(nb.ko, kotwv.projected, type="idw", style="W",
+alpha = 0, dmax = NULL, longlat = NULL, zero.policy=NULL)
+#Takes a very long time. 
+#Note: Alpha is usually set to 0. If we use 1 or 2 it can cause the error: no finite general weights. Alpha is a a parameter for controlling the distance modelling. 
+
+  #2. Plot a histogram of the number of neighbors
+
+# use attr to get the count of neighbors in W
+neighbors.ko.idw <- attr(lw.ko.idw$weights,"comp")$d 
+
+# plot it
+hist(neighbors.ko.idw)
+
+  #3. Calculate the average number of neighbors
+
+F25.2r.lag.IDW <- lag.listw(lw.ko.idw, kotwv.projected$B01001Ge17)
+F25.2r.lag.IDW
+
+
+  #4. Make a Moran Plot
+
+## use zero.policy = T because some polygons don't have neighbors
+moran.plot(kotwv.projected$B01001Ge17, lw.ko.idw, zero.policy=TRUE, plot=TRUE)
+
+
 ```
 
 
@@ -307,9 +345,37 @@ If an observation falls in the H-L quadrant, this indicates high values above av
 
 ## Bonus (+50 points)
 
-B1. make another Moran plot, this time do so manually (use `geom_point` from `ggplot`). You must label each quadrant with HH, HL, LL, and LH, respectively. You should also use color and/or shape to denote whether an observation is statistically significant. Tip, you can find the data you want using the ```moran.plot``` function, but you'll have to alter the function call and read some documentation.
+```{r}
+#B1. make another Moran plot, this time do so manually (use `geom_point` from `ggplot`). You must label each quadrant with HH, HL, LL, and LH, respectively. You should also use color and/or shape to denote whether an observation is statistically significant. Tip, you can find the data you want using the ```moran.plot``` function, but you'll have to alter the function call and read some documentation.
 
 
-B2. plot a choropleth map of your dataset with a categorical color scheme, where the shading corresponds to the Moran plot (really, “LISA”) quadrants. Thus, your map will have four shades of color.
+#I think you have to create a matrix
+#https://crd230.github.io/lab7.html
 
+moran_kotwv <- data.frame(
+  original_values = kotwv.projected$B01001Ge17,
+  lag = F25.2r.lag
+)
+
+
+ggplot(moran_kotwv, aes(x = original_values, y = lag)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Moran's Plot",
+    x = "Original Variable",
+    y = "Spatially Lagged Variable"
+  ) +
+  theme_minimal()+  
+  geom_vline(xintercept = 5) + geom_hline(yintercept = 5) 
+#This does not have the designated areas.  
+
+
+```
+
+```{r}
+#B2. plot a choropleth map of your dataset with a categorical color scheme, where the shading corresponds to the Moran plot (really, “LISA”) quadrants. Thus, your map will have four shades of color.
+
+
+```
 Note from reading: Local indicators of spatial analysis, or LISA has two requirements. For each observation gives an indication of the extent of significant spatial clustering of similar values around that observation. The sum of LISAs for all observations is proportional to a global indicator of spatial association. 
