@@ -1,7 +1,7 @@
 ---
 title: "Lab 03"
-#author: "Dr. Patrick Bitterman"
-#date: "`r format(Sys.time(), '%Y %B %d')`"
+#author: "Daiyanera Kelsey"
+#date: "4/1/2025"
 output: 
    pdf_document: 
       template: my_template.tex
@@ -216,15 +216,12 @@ str(kotvw)
 #B01001Ge24	SEX BY AGE (TWO OR MORE RACES): Female: 25 to 29 years: People who are Two or More Races -- (Estimate)
 #B01001Gm24	SEX BY AGE (TWO OR MORE RACES): Female: 25 to 29 years: People who are Two or More Races -- (Margin of Error)
 
-#B01001Ge17	SEX BY AGE (TWO OR MORE RACES): Female: People who are Two or More Races -- (Estimate)
-#B01001Gm17	SEX BY AGE (TWO OR MORE RACES): Female: People who are Two or More Races -- (Margin of Error)
-
 #B01001e35	SEX BY AGE: Female: 25 to 29 years: Total population -- (Estimate)
 #B01001m35	SEX BY AGE: Female: 25 to 29 years: Total population -- (Margin of Error)
 
-#Note, B01001e35 appears to be the total population while B01001Ge24 are specifically the population between 25-29 years. These are the variables I will use to normalize my data. I did not use the total two or more races as I am interested in how many females between 25-29 who are Two or More Races exist in the total population of females. 
+#Note, B01001e35 appears to be the total population of 25-29 year old females while B01001Ge24 are specifically the population between 25-29 years. These are the variables I will use to normalize my data. 
 
-kotvw$normalized_by_population <- kotvw$B01001Ge17 / kotvw$B01001e35
+kotvw$normalized_by_population <- kotvw$B01001Ge24 / kotvw$B01001e35
 
 ```
 
@@ -239,9 +236,9 @@ hist(kotvw$normalized_by_population)
 #4. Make a choropleth map of your chosen variable. Choose an appropriate data classiﬁcation scheme
 
 tm_shape(kotvw) + tm_polygons(fill = "normalized_by_population")
-#What would be an appropriate data classification scheme here?
-
 ```
+
+
 ```{r}
 #5. Develop a contiguity-based spatial weights matrix of your choosing (i.e., rook or queen)
 #Note from Dr. Bitterman, develop a weights matrix for a portion of the study area
@@ -249,14 +246,14 @@ tm_shape(kotvw) + tm_polygons(fill = "normalized_by_population")
 
 sf::st_crs(kotvw)
 # then reproject to north american equidistant conic
-kotwv.projected <- kotvw %>% sf::st_transform(., "ESRI:102010")
+kotvw.projected <- kotvw %>% sf::st_transform(., "ESRI:102010")
 # plot it again to make sure nothing broke
-tmap::tm_shape(kotwv.projected) + tm_polygons()
+tmap::tm_shape(kotvw.projected) + tm_polygons()
 
   #1. Row-standardize the W
 
 # make the neighborhood
-nb.ko <- spdep::poly2nb(kotwv.projected, queen = TRUE)
+nb.ko <- spdep::poly2nb(kotvw.projected, queen = TRUE)
 nb.ko[[1]]
 lw.ko <- nb2listw(nb.ko, style="W", zero.policy=TRUE)
 
@@ -269,16 +266,16 @@ neighbors.ko <- attr(lw.ko$weights,"comp")$d
 hist(neighbors.ko)
 
   #3. Calculate the average number of neighbors
+str(kotvw.projected$normalized_by_population)
 
-F25.2r.lag <- lag.listw(lw.ko, kotwv.projected$B01001Ge17)
+F25.2r.lag <- lag.listw(lw.ko, kotvw.projected$normalized_by_population)
 F25.2r.lag
 
 
   #4. Make a Moran Plot
 
-## use zero.policy = T because some polygons don't have neighbors
-moran.plot(kotwv.projected$B01001Ge17, lw.ko, zero.policy=TRUE, plot=TRUE)
-
+## used zero policy = false as if true, giant bubbles form. If TRUE, zero was assigned to the lagged value of zones without neighbours, if FALSE values were assigned NA. When set to TRUE, handles observations with no neighbors by assigning them a lagged value of zero, ensuring no errors occur during analysis
+moran.plot(kotvw.projected$normalized_by_population, lw.ko, zero.policy=FALSE, plot=TRUE)
 
 ```
 
@@ -287,20 +284,24 @@ moran.plot(kotwv.projected$B01001Ge17, lw.ko, zero.policy=TRUE, plot=TRUE)
 
 sf::st_crs(kotvw)
 # then reproject to north american equidistant conic
-kotwv.projected <- kotvw %>% sf::st_transform(., "ESRI:102010")
+kotvw.projected <- kotvw %>% sf::st_transform(., "ESRI:102010")
 # plot it again to make sure nothing broke
-tmap::tm_shape(kotwv.projected) + tm_polygons()
+tmap::tm_shape(kotvw.projected) + tm_polygons()
+sf::st_crs(kotvw.projected)
 
-  #1. Row-standardize the W
+kotvw.centroids <- st_centroid(kotvw.projected)
+
+ggplot() + 
+  geom_sf(data = kotvw.projected, fill = 'white') +
+  geom_sf(data = kotvw.centroids, color = 'red')
+ 
+
+ #1. Standardize the W
 
 # make the neighborhood
-nb.ko <- spdep::poly2nb(kotwv.projected, queen = TRUE)
-nb.ko[[1]]
+nb.ko.1 <- spdep::dnearneigh(kotvw.centroids, 0, 20000)
+lw.ko.idw <- nb2listw(nb.ko.1, style="W", zero.policy=TRUE)
 
-lw.ko.idw <- nb2listwdist(nb.ko, kotwv.projected, type="idw", style="W",
-alpha = 0, dmax = NULL, longlat = NULL, zero.policy=NULL)
-#Takes a very long time. 
-#Note: Alpha is usually set to 0. If we use 1 or 2 it can cause the error: no finite general weights. Alpha is a a parameter for controlling the distance modelling. 
 
   #2. Plot a histogram of the number of neighbors
 
@@ -312,15 +313,12 @@ hist(neighbors.ko.idw)
 
   #3. Calculate the average number of neighbors
 
-F25.2r.lag.IDW <- lag.listw(lw.ko.idw, kotwv.projected$B01001Ge17)
+F25.2r.lag.IDW <- lag.listw(lw.ko.idw, kotvw.projected$normalized_by_population)
 F25.2r.lag.IDW
-
 
   #4. Make a Moran Plot
 
-## use zero.policy = T because some polygons don't have neighbors
-moran.plot(kotwv.projected$B01001Ge17, lw.ko.idw, zero.policy=TRUE, plot=TRUE)
-
+moran.plot(kotvw.projected$normalized_by_population, lw.ko.idw, zero.policy=FALSE, plot=TRUE)
 
 ```
 
@@ -329,53 +327,56 @@ moran.plot(kotwv.projected$B01001Ge17, lw.ko.idw, zero.policy=TRUE, plot=TRUE)
 
 1. Describe in your own words how Moran’s I is calculated
 
-Moran's I is measuring autocorrelation by using both dependency of variables and coefficients. Moran's I is the measurement of the likelihood of nearby polygons to be related. The way this is measured is by using Moran's coefficient. Moran's coefficient: I = n/∑i∑jwij*∑i∑jwij(zi-z̄)(zj-z̄)/∑i(zi-z̄)^2. Where i and j represent the locations of interest, wij specifies the dependency or spatial weight between the locations of interest, z̄ is the mean of the two variable of interest, zi and zj represents the value of the variables at the locations of interest, n is the number of features, and ∑i∑jwij is the sum of all the spatial weights. When I > 0, there is positive spatial autocorrelation. When I < 0, there is negative spatial autocorrelation. Finally, when I = 0, there is no spatial autocorrelation.  
+Moran's I is a measure of autocorrelation which uses both the dependency of variables and coefficients to measure the autocorrelation. Further, Moran's I is the measurement of the likelihood of nearby polygons to be related. The way this is measured is by using Moran's coefficient. Moran's coefficient: I = n/∑i∑jwij*∑i∑jwij(zi-z̄)(zj-z̄)/∑i(zi-z̄)^2. 
+
+In the equation, the following variables represent:
+-i and j represent the locations of interest 
+-wij specifies the dependency or spatial weight between the locations of interest
+-z̄ is the mean of the two variable of interest 
+-zi and zj represents the value of the variables at the locations of interest
+-n is the number of features, and ∑i∑jwij is the sum of all the spatial weights. 
+
+When I > 0, there is positive spatial autocorrelation. When I < 0, there is negative spatial autocorrelation. Finally, when I = 0, there is no spatial autocorrelation. 
+
 
 2. Describe in your own words: what is a spatially-lagged variable?
 
-A spatially lagged variable is the product of a spatial weight matrix, measuring the variable's behavior in the neighborhood of a given observation. The spatially lagged variable is the average of the variable within a neighborhood. 
+A spatially lagged variable is the product of a spatial weight matrix, measuring the variable's behavior in the neighborhood of a given observation. The spatially lagged variable is the variable's weighted sum or weighted average of the neighboring values. 
 
 3. How does your analysis in this lab (as simple as it is) differ by how you have formalized W (e.g., space, neighbors) in two diﬀerent methods? How might it affect analysis?
 
-
+The primary difference between formalizing W in both analyses was one has used distance before formalizing W by row-standardizing the matrices while the other uses contiguity. This might affect analysis in which you have defined a set range in which the data must reach a certain criteria to be considered neighbors. IF you are within a certain range, you are thus considered neighbors. This is not the case with the other formalization as it uses the queen contiguity, suggesting that the neighbors all share a vertex with each other. Both thus use different critera to be considered neighbors. 
 
 4. What does it mean if an observation falls in the “H-L” quadrant? Why might it be useful to detect such occurrences?
 
-If an observation falls in the H-L quadrant, this indicates high values above average surrounded by values below average within the Moran plot. These are often associated with outliers. This is useful to detect if the values fall outside of the neighborhood. 
+If an observation falls in the H-L quadrant, this indicates high values above average surrounded by values below average within the Moran plot. These are often associated with outliers. This is useful to detect if the values fall outside of the normal and how different the values are compared to the neighborhood. Thus, you can answer the questions if the points are different compared to the rest of the neighbor and where does the point fall within the neighborhood. 
 
 ## Bonus (+50 points)
 
-```{r}
+```{r Did not complete}
 #B1. make another Moran plot, this time do so manually (use `geom_point` from `ggplot`). You must label each quadrant with HH, HL, LL, and LH, respectively. You should also use color and/or shape to denote whether an observation is statistically significant. Tip, you can find the data you want using the ```moran.plot``` function, but you'll have to alter the function call and read some documentation.
 
+#Think of Dr. Bitterman's example
+#    t   w(t)
+# p 20  4
+#r  40  30
 
-#I think you have to create a matrix
-#https://crd230.github.io/lab7.html
+#Take the z values to standardize
+#Then put on a scatterplot!
+kotvw.projected$normalized_by_population
 
-moran_kotwv <- data.frame(
-  original_values = kotwv.projected$B01001Ge17,
-  lag = F25.2r.lag
-)
+mean_value <- mean(kotvw.projected$normalized_by_population)
+sd_value <- sd(kotvw.projected$normalized_by_population)
+z_scores_manual <- (kotvw.projected$normalized_by_population - mean_value) / sd_value
+print(z_scores_manual)
 
-
-ggplot(moran_kotwv, aes(x = original_values, y = lag)) +
-  geom_point(color = "blue") +
-  geom_smooth(method = "lm", se = FALSE, color = "red") +
-  labs(
-    title = "Moran's Plot",
-    x = "Original Variable",
-    y = "Spatially Lagged Variable"
-  ) +
-  theme_minimal()+  
-  geom_vline(xintercept = 5) + geom_hline(yintercept = 5) 
-#This does not have the designated areas.  
-
-
+#From the description about Moran's scatterplot: A plot of spatial data against its spatially lagged values. 
 ```
 
-```{r}
+```{r Did not complete}
 #B2. plot a choropleth map of your dataset with a categorical color scheme, where the shading corresponds to the Moran plot (really, “LISA”) quadrants. Thus, your map will have four shades of color.
 
 
 ```
+
 Note from reading: Local indicators of spatial analysis, or LISA has two requirements. For each observation gives an indication of the extent of significant spatial clustering of similar values around that observation. The sum of LISAs for all observations is proportional to a global indicator of spatial association. 
