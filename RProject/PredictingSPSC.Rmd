@@ -6,12 +6,13 @@ output: html_document
 ---
 
 ```{r}
-library(raster)
 library(tidyverse)
 library(sf)
 library(terra)
 library(dplyr)
 library(spData)
+library(tmap)
+library(gstat)
 ```
 
 ```{r}
@@ -41,23 +42,78 @@ PWS.transform <- PWS_bind %>% sf::st_transform(., crs = 3857)
 
 plot(PWS.transform)
 #24 geometries
+PWS.transform %>% sf::st_area()
 ```
 
-```{r Randomized point distribution within polygons}
-#Creating points
+```{r Randomized point distribution}
+#Creating 50 random sampling points
 
-PWS.point.random <- st_sample(PWS.transform, size = c(3,3), type = "random", crs = 4326)
+PWS.point.random <- st_sample(PWS_bind, size = c(50), type = "random", crs = 4326)
 plot(PWS.point.random)
-# Create the random points (here, 3 random points for each polygon)
-# 3*24=72 sampling points within the site.
 
+tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.random) + tm_dots(fill='navyblue', size = .4)
 
-#Need to look into how to combine points and geometry
 
 ```
+
+```{r Randomized point distribution within polygons based on type}
+PWS.t.pPWS <- p.PWS %>% sf::st_transform(., crs = 4326)
+PWS.t.ePWS <- e.PWS %>% sf::st_transform(., crs = 4326)
+
+# Create a vector of sample sizes, one for each polygon
+sample_sizes_pPWS <- rep(4, nrow(PWS.t.pPWS))
+PWS.point.pPWS<- st_sample(PWS.t.pPWS, size = sample_sizes_pPWS, type = "random", crs = 4326)
+plot(PWS.point.pPWS)
+
+sample_sizes_ePWS <- rep(2, nrow(PWS.t.ePWS))
+PWS.point.ePWS<- st_sample(PWS.t.ePWS, sample_sizes_ePWS, type = "random", crs = 4326)
+plot(PWS.point.ePWS)
+# Create the random points (here, 2 random points for each elevation polygon, 4 for each polygon pool)
+#Total 9*4=36 points total across pools, 2*14=28 total across elevation. Total sampling is 64 points
+
+tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.pPWS) + tm_dots(fill='navyblue', size = .4) + tm_shape(PWS.point.ePWS) + tm_dots(fill='red', size = .4)
+
+```
+```{r Grid point distribution}
+#Creating 50 grid sampling points
+
+PWS.point.grid <- st_sample(PWS_bind, size = c(50), type = "regular", crs = 4326)
+plot(PWS.point.grid)
+
+tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.grid) + tm_dots(fill='navyblue', size = .4)
+```
+
+```{r Randomized point distribution}
+#Creating 50 hexagonal sampling points
+
+PWS.point.hex <- st_sample(PWS_bind, size = c(50), type = "hexagonal", crs = 4326)
+plot(PWS.point.hex)
+
+tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.hex) + tm_dots(fill='navyblue', size = .4)
+```
+
+
+```{r Convert ground truth to raster}
+# Polygons
+print(PWS.transform)
+
+#Define the extent of the raster based on the shapefile's bounding box
+extentofPWS <- ext(st_bbox(PWS_bind))  # Use the bounding box of the shapefile
+
+# Set raster resolution
+PWScols <- 100  # Set number of columns
+PWSrows <- 100  # Set number of rows
+
+# Create an empty raster template with the specified extent and resolution
+PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
+PWSrasterized_groundtruth <- rasterize(PWS_bind, PWSrast, field = "SPSC", background = NA)
+plot(PWSrasterized_groundtruth)
+```
+
 
 ```{r}
-
-
+#Before extracting values, points must be in a vector.
+randompt_vec <- vect(PWS.point.random)
+randomvals <- terra::extract(PWSrasterized_groundtruth, randompt_vec)
 
 ```

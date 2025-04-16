@@ -1,0 +1,330 @@
+---
+title: "Lab 04"
+#author: "Daiyanera Kelsey"
+#date: "4/16/2025"
+output: 
+   pdf_document: 
+      template: my_template.tex
+      keep_tex: true
+my_subtitle: "GEOG 491/891"
+fancy: true
+geometry: margin=1in
+latex_engine: pdflatex
+colorlinks: true
+---
+
+# Lab 04: Making static maps
+
+### Read the instructions COMPLETELY before starting the lab
+
+This lab builds on many of the discussions and exercises from class, including the "frankenmap" exercise from class.
+
+### Formatting your submission
+
+This lab must be placed into a public repository on GitHub (www.github.com). Before the due date, submit **on Canvas** a link to the repository. I will then download your repositories and run your code. The code must be contained in either a .R script or a .Rmd markdown document. As I need to run your code, any data you use in the lab must be referenced using **relative path names**. Finally, answers to questions I pose in this document must also be in the repository at the time you submit your link to Canvas. They can be in a separate text file, or if you decide to use an RMarkdown document, you can answer them directly in the doc.
+
+## Introduction
+
+This lab is much more free-form than previous assignments. You will be completing your own version of the in-class "frankenmap" using proper cartographic principles. I encourage you to use whatever resources you find useful, including the relevant sections of the Lovelace chapter and online resources such as: https://mgimond.github.io/Spatial/good-map-making-tips.html
+
+```{r}
+library(sf)
+library(terra)
+library(tmap)
+library(spData) 
+library(tidyverse)
+library(mapview)
+library(grid)
+```
+
+## Your tasks
+
+1. Using the same descriptions as the in-class frankenmap, create a map that follows "good" cartographic principles. I have included the instructions below for reference. The data can be found in: ```./data/static_mapping/```
+
+  Original description:
+
+### Ohio scale
+1. Ohio counties, symbolized (filled) by some variable of interest. You will need to use a tabular join (`left_join()`, most likely) between spatial and tabular data
+2. Borders symbolized using NON-DEFAULT symbols
+3. A scale bar
+
+```{r State}
+#1. Ohio counties, symbolized (filled) by some variable of interest. You will need to use a tabular join (`left_join()`, most likely) between spatial and tabular data.
+
+#Import oh_counties.gpkg
+ohcounties <- sf::read_sf("./ohio/oh_counties.gpkg") %>%  sf::st_make_valid()
+oh2020 <- read_csv("./ohio/oh_counties_DP2020.csv")
+
+#removing extra information. We do not need the totals for all of Ohio.
+oh2020 <- dplyr::filter(oh2020,name!="Ohio")
+
+#Checking all coordinate references
+st_crs(ohcounties) #NAD83
+#Want it to be WGS 84
+ohcoun_rp <- st_transform(ohcounties, "EPSG:4326")
+st_crs(ohcoun_rp)
+
+#joining the files
+ohjotab <- left_join(ohcoun_rp, oh2020, by=c("GEOIDFQ"="geoid"))
+plot(ohjotab)
+
+#mapping
+#2. Borders symbolized using NON-DEFAULT symbols
+#3. A scale bar
+ohio_as <- tm_shape(ohjotab) + tm_polygons(fill = "poptotal", fill.legend = tm_legend_hide(), lty=1,lwd=2, fill.scale = tm_scale_intervals(style = "fixed",  breaks = c(0, 400000, 800000, 1200000, 1600000), values = "matplotlib.blues")) + tm_scalebar(breaks = c(0, 100), text.size = 0.3, position = c("left", "top"))
+ohio_as
+
+
+
+```
+
+### Local scale
+1. Municipal boundaries within Portage AND Summit counties, with labels for names (see `oh_places.gpkg`)
+2. Parks within Portage AND Summit counties, symbolized using different shades of green according to the park TYPE
+3. Linear water features (streams, rivers) in Portage AND Summit counties. Symbols should indicate which linear features intersect a park
+
+```{r County}
+#Import oh_places.gpkg, oh_parks.gpkg and oh_rivers.gpkg
+#getwd()
+
+sf::sf_use_s2(FALSE)
+ohplaces <- sf::read_sf("./ohio/oh_places.gpkg") %>%  sf::st_make_valid()
+ohpark <- sf::read_sf("./ohio/oh_parks.gpkg") %>%  sf::st_make_valid()
+ohriver <- sf::read_sf("./ohio/oh_rivers.gpkg") %>%  sf::st_make_valid()
+ 
+
+#Checking all coordinate references
+st_crs(ohplaces) #NAD 83
+st_crs(ohpark) #WGS 84
+st_crs(ohriver) #WGS 84
+
+ohplaces_rp <- st_transform(ohplaces, "EPSG:4326")
+ohpark_rp <- st_transform(ohpark, "EPSG:4326")
+ohriver_rp <- st_transform(ohriver, "EPSG:4326")
+st_crs(ohplaces_rp)
+st_crs(ohpark_rp)
+st_crs(ohriver_rp)
+
+
+#1. Municipal boundaries within Portage AND Summit counties, with labels for names (see `oh_places.gpkg`)
+
+#first we need to filter out Portage and Summit County
+portsum <- ohcoun_rp %>% dplyr::filter(NAME=="Portage" | NAME=="Summit")
+plot(portsum)
+
+psummun <- st_intersection(ohplaces_rp, portsum)
+psummun
+plot(psummun)
+
+
+psummunmap <- tm_shape(psummun) + 
+  tm_lines(fill = "NAME", fill_alpha = 0.4, fill.legend = tm_legend_hide(), fill.scale = tm_scale(values = "brewer.set3", n.max = 60)) + 
+  tm_shape(st_centroid(psummun)) + 
+  tm_text(text = "NAME", size= 0.3, col = "black", fontface = "italic", remove.overlap = F)
+psummunmap 
+
+#Parks within Portage AND Summit counties, symbolized using different shades of green according to the park TYPE
+stpacou <- st_intersection(ohpark_rp, portsum) 
+plot(stpacou)
+
+stparkmap <- tm_shape(stpacou) + tm_polygons(fill = "FEATTYPE", fill_alpha = 0.85, fill.scale = tm_scale(values = "matplotlib.greens"))
+stparkmap
+
+
+#Linear water features (streams, rivers) in Portage AND Summit counties. Symbols should indicate which linear features intersect a park
+plot(ohriver_rp)
+strecou <- st_intersection(ohriver_rp, portsum)
+plot(strecou)
+streammap <- tm_shape(strecou) + tm_lines(lwd = 10, col = "darkblue")
+streammap
+
+#These maps will be overlayed onto the dem map!!
+```
+
+## Putting it together
+1. Use the provided DEM to plot elevation behind a semi-transparent Portage and Summit counties
+2. A north arrow
+3. Code to make the Ohio-scale map an inset into the map detailing the Portage + Summit counties study area
+4. A title
+
+```{r Together}
+#1. Use the provided DEM to plot elevation behind semi-transparent Portage and Summit counties
+
+#import the tif file 
+neoh_dem <- terra::rast("./ohio/neoh_dem.tif")
+plot(neoh_dem)
+st_crs(neoh_dem)
+
+neoh_dem_rp<- project(neoh_dem, ohcoun_rp)
+st_crs(neoh_dem_rp) #WGS 84
+
+#portsum needs to be a vector in order for terra to crop
+portsum_vec <- vect(portsum)
+demposu <- terra::crop(neoh_dem_rp, portsum_vec)
+plot(demposu)
+
+class(demposu)
+summary(demposu)
+#One band raster 
+
+demportsum<- tm_shape(portsum) + tm_polygons() +
+  tm_shape(demposu) + tm_raster(col_alpha = 0.5) 
+demportsum
+
+#2. A north arrow
+
+dempsarr <- demportsum + tm_compass(type = "arrow", position = c("right", "bottom")) 
+
+#3. Code to make the Ohio-scale map an inset into the map detailing the Portage + Summit counties study area 
+#St_bbox(objectofinterestlikeohio)
+
+psummunmap
+streammap
+stparkmap
+combmap_cou <- psummunmap + streammap + stparkmap 
+combmap_cou
+
+pssa <- dempsarr + combmap_cou + tm_title("Portage and Summit study area") 
+pssa 
+
+ohss <- ohio_as + tm_shape(portsum) + tm_borders(lwd = 5)
+
+ohbox <- st_bbox(ohcoun_rp) %>% st_as_sfc()
+
+norm_dim = function(obj){
+    bbox = st_bbox(obj)
+    width = bbox[["xmax"]] - bbox[["xmin"]]
+    height = bbox[["ymax"]] - bbox[["ymin"]]
+    w = width / max(width, height)
+    h = height / max(width, height)
+    return(unit(c(w, h), "snpc"))
+}
+
+main_dim = norm_dim(portsum)
+ins_dim = norm_dim(ohbox)
+
+main_vp = viewport(width = main_dim[1], height = main_dim[2])
+
+ins_vp = viewport(width = ins_dim[1] * 0.5, height = ins_dim[2] * 0.5,
+                  x = unit(1, "npc") - unit(0.5, "cm"), y = unit(0.5, "cm"),
+                  just = c("left", "bottom"))
+grid.newpage()
+print(pssa, vp = main_vp)
+pushViewport(main_vp)
+print(ohss, vp = ins_vp)
+ 
+
+
+```
+
+### One NOTE:
+
+*EVERYTHING NEEDS DONE PROGRAMMATICALLY REFERENCING DATA LOCATIONS IN THE REPO*
+
+
+2. Make a second static map of your choosing. You may choose any spatial extent, domain, or technique. I'm looking for creativity, good coding practices (including comments), and for you to demonstrate independent thinking. There are minor restrictions you must follow:
+    1. It must include vector AND raster data in some manner
+    2. It must include spatial data relating to a social process (e.g., political boundaries) AND spatial data relating to an environmental process (e.g., water resources)
+    3. The map should "stand on its own" and communicate its purpose without additional text
+    4. That's it!
+    
+
+```{r mymap}
+#2. Make a second static map of your choosing. You may choose any spatial extent, domain, or technique. I'm looking for creativity, good coding practices (including comments), and for you to demonstrate independent thinking. There are minor restrictions you must follow:
+    #1. It must include vector AND raster data in some manner
+    #2. It must include spatial data relating to a social process (e.g., political boundaries) AND spatial data relating to an environmental process (e.g., water resources)
+    #3. The map should "stand on its own" and communicate its purpose without additional text
+    #4. That's it!
+
+#Import 
+ohcounties <- sf::read_sf("./ohio/oh_counties.gpkg") %>%  sf::st_make_valid()
+oh2020 <- read_csv("./ohio/oh_counties_DP2020.csv")
+ohplaces <- sf::read_sf("./ohio/oh_places.gpkg") %>%  sf::st_make_valid()
+floodcuy <- sf::read_sf("./cuyafw/cuyafw.shp") %>%  sf::st_make_valid()
+stucuy <- sf::read_sf("./cuyastruct/cuyastruct.shp") %>%  sf::st_make_valid()
+
+#removing extra information. We do not need the totals for all of Ohio.
+oh2020 <- dplyr::filter(oh2020,name!="Ohio")
+
+#Checking all coordinate references
+st_crs(ohcounties) #NAD83
+st_crs(ohplaces) #NAD83
+st_crs(stucuy )
+st_crs(floodcuy)
+
+#Want it to be WGS 84
+ohcoun_rp <- st_transform(ohcounties, "EPSG:4326")
+ohplaces_rp <- st_transform(ohplaces, "EPSG:4326")
+stucuy_rp <- st_transform(stucuy, "EPSG:4326")
+floodcuy_rp <- st_transform(floodcuy, "EPSG:4326")
+st_crs(ohcoun_rp)
+st_crs(ohplaces_rp)
+st_crs(stucuy_rp)
+st_crs(floodcuy_rp)
+
+
+cuy.co <- ohcoun_rp %>% dplyr::filter(NAME=="Cuyahoga")
+plot(cuy.co)
+
+
+cocuy <- st_intersection(ohcoun_rp, cuy.co)
+muncuy <- st_intersection(ohplaces_rp, cuy.co)
+struccuy <- st_intersection(stucuy_rp, cuy.co)
+flocuy <- st_intersection(floodcuy_rp, cuy.co)
+
+plot(cocuy)
+plot(muncuy)
+plot(struccuy)
+plot(flocuy)
+
+cocuymap <- tm_shape(cocuy) + tm_polygons()
+cocuymap
+
+muncuymap <- tm_shape(muncuy) + tm_polygons(fill = "NAME", fill_alpha = 0.3, fill.legend = tm_legend_hide(), fill.scale = tm_scale(values = "brewer.set3", n.max = 80)) + tm_shape(st_centroid(muncuy)) + tm_text(text = "NAME", size= 0.2, col = "black", fontface = "italic", remove.overlap = F)
+muncuymap
+
+flocuymap <- tm_shape(flocuy) + tm_lines(lwd = 3, col="darkblue", col_alpha = 0.6)
+flocuymap
+
+struccuymap <- tm_shape(struccuy) + tm_dots(fill="red", fill_alpha = 0.6, size=0.3)
+
+neoh_dem <- terra::rast("./ohio/neoh_dem.tif")
+plot(neoh_dem)
+st_crs(neoh_dem)
+
+neoh_dem_rp<- project(neoh_dem, ohcoun_rp)
+st_crs(neoh_dem_rp) #WGS 84
+
+#portsum needs to be a vector in order for terra to crop
+cuy.co_vec <- vect(cuy.co)
+demcuy <- terra::crop(neoh_dem_rp, cuy.co_vec)
+plot(demcuy)
+
+
+
+demcuymap <- tm_shape(cuy.co) + tm_polygons() +
+  tm_shape(demcuy) + tm_raster(col_alpha = 0.8)  
+demcuymap
+
+megamap <- cocuymap + demcuymap + muncuymap + struccuymap+ flocuymap
+megamap + tm_scalebar(position = c("left", "top")) +tm_compass(type = "4star", position = c("right", "top")) + tm_title("Cuyahoga County Structures Subject to Flood Risk") 
+```    
+
+## Questions:
+
+1. Describe and justify your choices in making map 1. 
+
+The map was not exactly the way I wanted it to turn out. However, I found myself spending a lot of time getting bogged down with the aesthetics and trying to make it perfect. Thus, due to time constraints, I did the minimum that would accomplish the prompts while attempting to make it more aesthetically nice. I used some of the code from class, but I had changed the aesthetics a lot. The Ohio Scale map I had decided to make a choropleth map based on the population per county and I made 5 breaks so the material was easier to digest. The legend was removed as this later caused bugs when I tried to create a bounding box. The scale bar was my Achilles heel as when it became an inset map, the scale was completely readjusted and overlapped the map. Thus, I shrunk it to a smaller sized font in order for it to look nice when I created the inset map. In the County Scale map, I had used a color palette to distinguish the municipal boundaries. I did this as I believed it would be easier for the boundaries to be seen and I, in addition, had made it a bit transparent so I could overlay the parks on top as I wanted the parks and streams to be the focal point. I believe that there could have been a better decision to distinguish the municipal boundaries, but this was the best decision I could make at the moment with the bounds of my knowledge. I made the parks slightly transparent so you could still see where the parks fell within the municipal bounds. I positioned the arrow on the dem map first as I knew when I did an overlay, the parks, streams, and municipal bounds would not cover the arrow. I added a title once the maps were combined. The inset map I had positioned away from the main map so it wouldn't overlay over the legend and I felt it appeared the most aesthetically nice. Overall, I am pleased that I got it to look better than my initial starting point, but there are significant improvements that could be made to make this a better map. 
+
+2. Compare the cartographic decisions you made in your *individual* process to the decisions made *by the groups in-class*. Make direct reference to how your group made decisions in-class, and how those decisions impacted the final "frankenmap".
+
+The chaotic compiling of the code had led to various errors. We weren't sure which variable meant what and overall, it was difficult to know what was going on. We emailed the code instead of uploading it to GitHub. There was some code being used from tmap v3 instead of v4 as well which had to be translated at times in order for other code to work. In summary, it was a coding nightmare. In terms of cartographic decisions, I did not like the way some of the maps looked. For example, I wasn't a fan dotted lines representing boundaries between counties or I didn't like how thick the lines were for the stream. I also found that the labels were not on the municipal boundaries. I made significant changes as described in question 1. I found that to make things easier in the future so we don't have a situation like the "frankenmap", annotating code, making sure the most up to date version is used, and uploading changes to GitHub is super important to having a successful coding day. Not to mention, extremely good communication with your colleagues! 
+
+3. Describe your choices in making map 2 (the one of your choosing). Include why you chose the problem and where you obtained your data. Finally, your map is a communication piece. What was the intent of your communication and do you feel as though you achieved your goal?
+
+
+There were a lot of decisions made with this and a lot of reconsiderations. I wasn't satisfied with many maps I made until I had finally settled on this one. Granted, it is no where close to perfect, but for now I okay with this map. I used some of the previous data (the municipality data and the county data) and scaled it to Cuyahoga County. I then added in data obtained from the ODNR which include floodways from FEMA and structures in Cuyahoga at risk to flood. I used similar methods like in the first map where I changed the municipal counties to show by transparent color. I then used the data from the ODNR and scaled the floodways to be blue and I made the structures red (red I feel is often associated with risk). I used the DEM in the background to showcase the elevation in the area as lower elevations are often more subjective to flooding. I made my lines more transparent to see the points behind the points. I did not place my points on top of the lines, or floodways, as this did not look nearly as nice. I chose this as I felt it was interesting to see where the major flood risks are within Cuyahoga county and where structures could be affected by flooding. By obtaining this knowledge and visualizing the data, one might be able to infer if flooding insurance is needed and where to build structures for example. I also had found this map was the most feasible to make. I feel I did achieve my goal of achieving my goal to communicate where flooding is the most likely to occur and where structures are the most at risk to have flooding damage. 
+
+4. With respect to `tmap` and the process of creating static maps, what did you learn?
+
+Inset maps was my biggest learning curve, but I feel I understand how to do it more and viewpoint. I also feel this taught me how to manipulate data in a way that was unexpected. The bounds of R really are endless! I feel this taught me how to make better aesthetic decisions, how to debug code such as the case with the psummunmap. In order for labels to appear, one just needed to use the st_centroid() function! Code sometimes gets hung up on the little details and learning the process on how to debug and the thinking process behind it has been super helpful! Besides learning how to use tmaps, I feel I learned a lot of other skills!
