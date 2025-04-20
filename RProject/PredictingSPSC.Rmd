@@ -44,55 +44,6 @@ plot(PWS.transform)
 #24 geometries
 PWS.transform %>% sf::st_area()
 ```
-
-```{r Randomized point distribution}
-#Creating 50 random sampling points
-
-PWS.point.random <- st_sample(PWS_bind, size = c(50), type = "random", crs = 4326)
-plot(PWS.point.random)
-
-tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.random) + tm_dots(fill='navyblue', size = .4)
-
-
-```
-
-```{r Randomized point distribution within polygons based on type}
-PWS.t.pPWS <- p.PWS %>% sf::st_transform(., crs = 4326)
-PWS.t.ePWS <- e.PWS %>% sf::st_transform(., crs = 4326)
-
-# Create a vector of sample sizes, one for each polygon
-sample_sizes_pPWS <- rep(4, nrow(PWS.t.pPWS))
-PWS.point.pPWS<- st_sample(PWS.t.pPWS, size = sample_sizes_pPWS, type = "random", crs = 4326)
-plot(PWS.point.pPWS)
-
-sample_sizes_ePWS <- rep(2, nrow(PWS.t.ePWS))
-PWS.point.ePWS<- st_sample(PWS.t.ePWS, sample_sizes_ePWS, type = "random", crs = 4326)
-plot(PWS.point.ePWS)
-# Create the random points (here, 2 random points for each elevation polygon, 4 for each polygon pool)
-#Total 9*4=36 points total across pools, 2*14=28 total across elevation. Total sampling is 64 points
-
-tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.pPWS) + tm_dots(fill='navyblue', size = .4) + tm_shape(PWS.point.ePWS) + tm_dots(fill='red', size = .4)
-
-```
-```{r Grid point distribution}
-#Creating 50 grid sampling points
-
-PWS.point.grid <- st_sample(PWS_bind, size = c(50), type = "regular", crs = 4326)
-plot(PWS.point.grid)
-
-tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.grid) + tm_dots(fill='navyblue', size = .4)
-```
-
-```{r Randomized point distribution}
-#Creating 50 hexagonal sampling points
-
-PWS.point.hex <- st_sample(PWS_bind, size = c(50), type = "hexagonal", crs = 4326)
-plot(PWS.point.hex)
-
-tm_shape(PWS.transform) + tm_polygons() + tm_shape(PWS.point.hex) + tm_dots(fill='navyblue', size = .4)
-```
-
-
 ```{r Convert ground truth to raster}
 # Polygons
 print(PWS.transform)
@@ -110,10 +61,156 @@ PWSrasterized_groundtruth <- rasterize(PWS_bind, PWSrast, field = "SPSC", backgr
 plot(PWSrasterized_groundtruth)
 ```
 
+```{r Randomized point distribution}
+#Creating 50 random sampling points
+#The cool thing about this code is that they are random every time!! 
 
-```{r}
-#Before extracting values, points must be in a vector.
-randompt_vec <- vect(PWS.point.random)
-randomvals <- terra::extract(PWSrasterized_groundtruth, randompt_vec)
+PWS.point.random <- spatSample(PWSrasterized_groundtruth, 50, method="random", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+  #Note about replace: If TRUE, sampling is with replacement (if method="random")
 
+plot(PWS.point.random)
+# Convert to Spatial for gstat (required by gstat::idw)
+
+PWSRandom_points_sp <- as(PWS.point.random, "Spatial")
+#PWS.transform
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSRandom_points_sp)
+
+# Interpolate using gstat::idw
+PWS.random.idw <- idw(SPSC ~ 1, PWSRandom_points_sp, newdata = grid, idp = 2)
+#Notes, breaking down the code
+#formula: Defines the dependent variable as a linear model of independent variables; suppose the dependent variable has name z, for ordinary and simple kriging use the formula z~1; for simple kriging also define beta (see below); for universal kriging, suppose z is linearly dependent on x and y, use the formula z~x+y
+#newdata: object of class Spatial, sf or stars with prediction/simulation locations; should contain attributes with the independent variables (if present).
+#idp: numeric; specify the inverse distance weighting power
+
+# Convert to terra raster
+PWS.random.raster <- rast(PWS.random.idw)
+plot(PWS.random.raster)
 ```
+
+```{r Randomized point distribution within polygons based on type}
+
+PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
+PWSrasterized_pool <- rasterize(p.PWS, PWSrast, field = "SPSC", background = NA)
+plot(PWSrasterized_pool)
+
+PWSpoolraster_random <- spatSample(PWSrasterized_pool, 30, method="random", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+
+PWSrasterized_elev <- rasterize(e.PWS, PWSrast, field = "SPSC", background = NA)
+plot(PWSrasterized_elev)
+
+PWSelevraster_random<- spatSample(PWSrasterized_elev, 20, method="random", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+
+#Bind points together after sampling from different features
+PWS_ep_point <- rbind(PWSelevraster_random, PWSpoolraster_random)
+plot(PWS_ep_point)
+
+
+#Convert sample points to sf
+PWSpecom_sf <- sf::st_as_sf(PWS_ep_point)
+#Then to SpatialPointsDataFrame
+PWSpecom_sp <- as(PWSpecom_sf, "Spatial")
+
+
+#PWS_ep_com_raster <- rasterize(PWS_ep_point, PWSrast, field = "SPSC", background = NA)
+# Convert to Spatial for gstat (required by gstat::idw)
+#PWSpecom_sp <- as(PWS_ep_com_raster, "Spatial")
+#PWS.transform
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSpecom_sp)
+
+# Interpolate using gstat::idw
+PWS.eprandom.idw <- idw(SPSC ~ 1, PWSpecom_sp, newdata = grid, idp = 2)
+
+# Convert to terra raster
+PWS.eprandom.raster <- rast(PWS.eprandom.idw)
+plot(PWS.eprandom.raster)
+```
+
+
+```{r Regular point distribution}
+#Creating 50 grid sampling points
+
+PWS.point.regular <- spatSample(PWSrasterized_groundtruth, 50, method="regular", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+  #Note about replace: If TRUE, sampling is with replacement (if method="random")
+
+plot(PWS.point.regular)
+# Convert to Spatial for gstat (required by gstat::idw)
+
+PWSRegular_points_sp <- as(PWS.point.regular, "Spatial")
+#PWS.transform
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSRegular_points_sp)
+
+# Interpolate using gstat::idw
+PWS.regular.idw <- idw(SPSC ~ 1, PWSRegular_points_sp, newdata = grid, idp = 2)
+
+# Convert to terra raster
+PWS.regular.raster <- rast(PWS.regular.idw)
+plot(PWS.regular.raster)
+```
+
+```{r Regular point distribution within polygons based on type}
+
+PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
+PWSrasterized_pool <- rasterize(p.PWS, PWSrast, field = "SPSC", background = NA)
+plot(PWSrasterized_pool)
+
+PWSpoolraster_regular <- spatSample(PWSrasterized_pool, 30, method="regular", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+
+PWSrasterized_elev <- rasterize(e.PWS, PWSrast, field = "SPSC", background = NA)
+plot(PWSrasterized_elev)
+
+PWSelevraster_regular <- spatSample(PWSrasterized_elev, 20, method="regular", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+
+#Bind points together after sampling from different features
+PWS_ep_pointreg <- rbind(PWSelevraster_regular, PWSpoolraster_regular)
+plot(PWS_ep_pointreg)
+
+
+#Convert sample points to sf
+PWSpecomreg_sf <- sf::st_as_sf(PWS_ep_pointreg)
+#Then to SpatialPointsDataFrame
+PWSpecomreg_sp <- as(PWSpecomreg_sf, "Spatial")
+
+
+#PWS_ep_com_raster <- rasterize(PWS_ep_point, PWSrast, field = "SPSC", background = NA)
+# Convert to Spatial for gstat (required by gstat::idw)
+#PWSpecom_sp <- as(PWS_ep_com_raster, "Spatial")
+#PWS.transform
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSpecomreg_sp)
+
+# Interpolate using gstat::idw
+PWS.epreg.idw <- idw(SPSC ~ 1, PWSpecomreg_sp, newdata = grid, idp = 2)
+
+# Convert to terra raster
+PWS.epreg.raster <- rast(PWS.epreg.idw)
+plot(PWS.epreg.raster)
+```
+
+
+
+

@@ -1,0 +1,330 @@
+---
+title: "Lab 05"
+#author: "Daiyanera Kelsey"
+#date: "4/30/2025"
+output: 
+   pdf_document: 
+      template: my_template.tex
+      keep_tex: true
+my_subtitle: "Env Analysis in R"
+fancy: true
+geometry: margin=1in
+latex_engine: pdflatex
+colorlinks: true
+---
+
+# Lab 05: Dynamic mapping in Leaflet
+
+### Read the instructions COMPLETELY before starting the lab
+
+This lab builds on many of the discussions and exercises from class, including lab 4
+
+### Formatting your submission
+
+This lab must be placed into a public repository on GitHub (www.github.com). Before the due date, submit **on Canvas** a link to the repository. I will then download your repositories and run your code. The code must be contained in either a .R script or a .Rmd markdown document. As I need to run your code, any data you use in the lab must be referenced using **relative path names**. Finally, answers to questions I pose in this document must also be in the repository at the time you submit your link to Canvas. They can be in a separate text file, or if you decide to use an RMarkdown document, you can answer them directly in the doc.
+
+## Introduction
+
+This lab is much more free-form than previous assignments. You will be taking previous work from previous labs re-creating the maps using the Leaflet package. I encourage you to use whatever resources you find useful, including https://rstudio.github.io/leaflet/ and https://bookdown.org/nicohahn/making_maps_with_r5/docs/leaflet.html
+
+
+## Your tasks
+
+For this lab, you will re-create maps from labs 2-4 using Leaflet. Below, I have referenced a specific question or task from lab 2, lab 3, and lab 4. Further, I have added new, Leaflet-specific tasks to each item. You will need to look back to previous labs to find the relevant context for each task. Create the maps as specified, then answer the questions at the end.
+
+```{r setup, echo=TRUE, message=TRUE}
+# setup
+library(tidyverse)
+library(sf)
+library(tmap)
+library(stringr)
+library(RColorBrewer)
+library(leaflet)
+library(leaflet.extras)
+library(terra)
+library(spdep)
+```
+### Task 1. From lab 2, task 2.3:
+
+*Original task to be recreated using Leaflet:* Make a map of the counties, shading each county by the total cost of BMPs funded/implemented in that county. This will required you to join multiple datasets together
+
+*Leaflet/other extras to add:*
+- Mouse-over label the displays the total cost of BMPs funded in that county
+- Use an equal-interval classification method with 5 classes. Determine the breaks programmatically.
+- Do NOT use the default color scheme
+
+```{r}
+#Spatial dataset: County_Boundaries.shp
+#Non-spatial dataset: BMPreport2016_landbmps.csv
+
+bmps <- read_csv("./task1/BMPreport2016_landbmps.csv")
+counties <- sf::read_sf("./task1/County_Boundaries.shp") %>% sf::st_make_valid() %>% st_transform(., "EPSG:4326")
+#tm_shape(counties) + tm_polygons(fill = "ALAND10") #Checking map
+
+
+bmps$GeoNameCond <- str_sub(bmps$GeographyName, 3,5)
+bmps
+
+bmpfilt <- bmps %>%  as_tibble() %>% group_by(GeoNameCond) %>% summarise(totalcost = sum(Cost, na.rm=TRUE), .groups = "drop")
+
+bmpco_joined <- left_join(counties, bmpfilt, by = c("COUNTYFP10"= "GeoNameCond"))
+bmpco_joined
+
+tm_shape(bmpco_joined) + tm_polygons(fill = "totalcost")
+
+bmpco_joined$totalcost 
+
+pal1 <- colorBin(palette = "Purples",
+  domain = bmpco_joined$totalcost, bins = 5)
+
+leaflet() %>%
+  addTiles() %>%
+   addPolygons(
+    data = bmpco_joined,
+    fillColor = ~pal1(totalcost),
+    opacity = 1,
+    weight = 2,
+    color= "black",
+    dashArray = "2",
+    fillOpacity = 0.9,
+    label = paste("County:", 
+      bmpco_joined$NAME10,"<br>",
+      "Total Cost of BMPS:",
+      bmpco_joined$totalcost
+    ) %>%
+      lapply(htmltools::HTML),
+  ) %>% addLegend(pal = pal1, values = bmpco_joined$totalcost, opacity = 0.7, title = NULL,
+  position = "bottomright") 
+```
+
+### Task 2. From lab 3, task Bonus #2:
+
+*Original task to be recreated using Leaflet:* plot a choropleth map of your dataset with a categorical color scheme, where the shading corresponds to the Moran plot (really, “LISA”) quadrants. Thus, your map will have four shades of color.
+
+*Leaflet/other extras to add:*
+
+- Add a pop-up window that displays the p-value (you'll have to look at the `moran.plot()` documentation) when you click on that county with a mouse
+
+- Add a control to change between 3 different basemaps
+
+```{r}
+kot <- sf::read_sf("./task2/kotvw_statesubset.shp") %>% sf::st_make_valid()  %>% st_transform(., "EPSG:4326")
+
+str(kot)
+#Referenced metadata. 
+#B01001Ge24	SEX BY AGE (TWO OR MORE RACES): Female: 25 to 29 years: People who are Two or More Races -- (Estimate)
+#B01001e35	SEX BY AGE: Female: 25 to 29 years: Total population -- (Estimate)
+#Note, B01001e35 appears to be the total population of 25-29 year old females while B01001Ge24 are specifically the population between 25-29 years. These are the variables I will use to normalize my data. 
+
+kot$normalized_by_population <- kot$B01001Ge24 / kot$B01001e35
+
+#4. Make a choropleth map of your chosen variable. Choose an appropriate data classiﬁcation scheme
+
+tm_shape(kot) + tm_polygons(fill = "normalized_by_population")
+
+  #1. Row-standardize the W
+
+# make the neighborhood
+nb.ko <- spdep::poly2nb(kot, queen = TRUE)
+nb.ko[[1]]
+lw.ko <- nb2listw(nb.ko, style="W", zero.policy=TRUE)
+
+# use attr to get the count of neighbors in W
+neighbors.ko <- attr(lw.ko$weights,"comp")$d 
+
+
+  #3. Calculate the average number of neighbors
+str(kot$normalized_by_population)
+
+F25.2r.lag <- lag.listw(lw.ko, kot$normalized_by_population)
+F25.2r.lag
+
+
+## used zero policy = false as if true, giant bubbles form. If TRUE, zero was assigned to the lagged value of zones without neighbours, if FALSE values were assigned NA. When set to TRUE, handles observations with no neighbors by assigning them a lagged value of zero, ensuring no errors occur during analysis
+
+moran.plot(kot$normalized_by_population, lw.ko, zero.policy=FALSE, plot=TRUE)
+#Moran's plot does not display p-values! It is rather a local moran that will display the values. 
+
+local_moran <- localmoran(kot$normalized_by_population, lw.ko, zero.policy=FALSE)
+kot$p_value <- local_moran[,5] 
+
+#lm <- localmoran(kot$normalized_by_population, lw.ko, zero.policy = FALSE)
+#view(lm)
+
+#USED THIS WEBSITE FOR THE SCALE CODE UP UNTIL QUAD_COLOR!!! https://web.pdx.edu/~scm6/local_spatial_autocorrelation_and_leaflet.html
+
+scale_pct_snap <- scale(kot$normalized_by_population) 
+scale_lag_pct_snap <- scale(F25.2r.lag)  
+
+hh <- as.vector(scale_pct_snap > 0 & scale_lag_pct_snap > 0)
+lh <- as.vector(scale_pct_snap < 0 & scale_lag_pct_snap > 0)
+ll <- as.vector(scale_pct_snap < 0 & scale_lag_pct_snap < 0)
+hl <- as.vector(scale_pct_snap > 0 & scale_lag_pct_snap < 0)
+
+quad_color <- NA
+quad_color <- ifelse(hh, 'red', quad_color)
+quad_color <- ifelse(lh, 'skyblue', quad_color)
+quad_color <- ifelse(ll, 'navy', quad_color)
+quad_color <- ifelse(hl, 'orange', quad_color)
+
+
+leaflet() %>% 
+  addTiles() %>%   
+  addPolygons(
+    data = kot,
+    weight = 1,
+  color = 'black',
+  fillColor = quad_color, # Created color ramp
+  fillOpacity = 0.7,
+  label = paste("P-value", 
+      kot$p_value)
+  ) %>% 
+   addProviderTiles(
+    "Esri.WorldStreetMap",
+    group = "Esri.WorldStreetMap") %>%
+  addProviderTiles(
+    "Esri.WorldImagery",
+    group = "Esri.WorldImagery") %>%
+   addProviderTiles(
+    "CartoDB.DarkMatter",
+  group ="CartoDB.DarkMatter") %>%
+  addLayersControl(
+    baseGroups = c('Esri.WorldStreetMap', 'Esdri.WorldImagery', 'CartoDB.DarkMatter')
+    )
+
+```
+
+### Task 3: From lab 4, task 2:
+
+*Original task to be recreated using Leaflet:* Make a second  map of your choosing. You may choose any spatial extent, domain, or technique. I'm looking for creativity, good coding practices (including comments), and for you to demonstrate independent thinking. There are minor restrictions you must follow:
+
+1. It must include vector AND raster data in some manner
+    
+2. It must include spatial data relating to a social process (e.g., political boundaries) AND spatial data relating to an environmental process (e.g., water resources)
+    
+3. The map should "stand on its own" and communicate its purpose without additional text
+    
+4. That's it!
+
+*Leaflet/other extras to add:*
+
+- Add a control that turns on/off each layer 
+
+- Since everyone's maps are different, I can't specify exactly what else you should add. But, find one thing cool, interesting, or applicable to YOUR map, and implement it.
+
+
+```{r}
+
+#Import 
+ohcounties <- sf::read_sf("./task3/ohio/oh_counties.gpkg") %>%  sf::st_make_valid() %>% st_transform(., "EPSG:4326")
+oh2020 <- read_csv("./task3/ohio/oh_counties_DP2020.csv")
+ohplaces <- sf::read_sf("./task3/ohio/oh_places.gpkg") %>%  sf::st_make_valid() %>% st_transform(., "EPSG:4326")
+floodcuy <- sf::read_sf("./task3/cuyafw/cuyafw.shp") %>%  sf::st_make_valid() %>% st_transform(., "EPSG:4326")
+stucuy <- sf::read_sf("./task3/cuyastruct/cuyastruct.shp") %>%  sf::st_make_valid() %>% st_transform(., "EPSG:4326")
+cuya100 <- sf::read_sf("./task3/cuya100/cuya100.shp") %>%  sf::st_make_valid() %>% st_transform(., "EPSG:4326")
+neoh_dem <- terra::rast("./task3/ohio/neoh_dem.tif") %>% project(., "EPSG:4326")
+
+#removing extra information. We do not need the totals for all of Ohio.
+oh2020 <- dplyr::filter(oh2020,name!="Ohio")
+
+cuy.co <- ohcounties %>% dplyr::filter(NAME=="Cuyahoga")
+plot(cuy.co)
+
+cocuy <- st_intersection(ohcounties, cuy.co)
+muncuy <- st_intersection(ohplaces, cuy.co)
+struccuy <- st_intersection(stucuy, cuy.co)
+flocuy <- st_intersection(floodcuy, cuy.co)
+f100cuy <- st_intersection(cuya100, cuy.co)
+
+cuy.co_vec <- vect(cuy.co)
+demcuy <- terra::crop(neoh_dem, cuy.co_vec)
+
+
+plot(cocuy) #polygon
+plot(muncuy) #polygon
+plot(struccuy) #points
+plot(flocuy) #lines
+plot(demcuy) #raster
+plot(f100cuy) #ines
+
+pal2 <- colorFactor("Set3", domain = muncuy$NAME)
+
+
+
+leaflet() %>%
+  addTiles() %>%
+  addRasterImage(
+    demcuy, 
+    colors = "viridis", 
+    opacity = 0.5, 
+    group = "Digital Elevation Model") %>%
+   addPolygons(
+    data = cocuy,
+    color = "grey", 
+    opacity = 1,
+    weight = 2,
+    dashArray = "2",
+    group = "Cuyahoga County Boundaries") %>%
+ addPolygons(
+    data = muncuy,
+    fillColor = ~pal2(NAME),
+    opacity = 1,
+    weight = 1,
+    color= "black",
+    dashArray = "2",
+    fillOpacity = 0.2,
+     group = "Municipalites",
+    label = paste("Municipality:", 
+      muncuy$NAME
+    )
+    %>%
+      lapply(htmltools::HTML),
+  ) %>%
+  addCircleMarkers(
+    data = struccuy,
+    radius = 1,
+    fill = TRUE,
+    color = "darkorange",
+    opacity = 0.3,
+    fillColor = "orange",
+    fillOpacity = 0.3,
+     group = "Structures Prone to Flooding") %>% 
+    addPolylines(
+    data = f100cuy,
+    opacity = 0.9,
+    weight = 2,
+    color = "darkblue",
+    group ="100 Year Flood Hazard Floodway Area"
+  ) %>% 
+  addPolylines(
+    data = flocuy,
+    opacity = 0.9,
+    weight = 2,
+    color = "lightblue",
+    group ="Floodway Areas"
+  ) %>% 
+     addLayersControl(
+    overlayGroups = c("Digital Elevation Model", "Cuyahoga County Boundaries", "Municipalites", "Structures Prone to Flooding", "100 Year Flood Hazard Floodway Area", "Floodway Areas"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
+
+
+
+
+## **Questions:**
+
+1. Reflect on the labs from this semester. What did you learn? What did you like? What did you not like?
+
+There was so much I learned this semester. I learned how to code maps, how to conduct raster math, I learned about kriging and idw, and the endless possibilities of R! I also learned that it is very important to think about the end goal before starting the code. Sure, I heard it multiple times to think about the end goal and to think about the process before starting, but it was only really working in this class that it began to really materialize how truly important that thought process is. I would dive in and overwhelm myself often, but as soon as I took a step back to understand what I am trying to accomplish and even reading through some of the stats, things began to click and coding became easier. I am slowly getting faster and I am really proud of myself for the progress I have made. 
+
+In lab 4, the inset map I will forever hold a grudge towards. I got bogged down with the static mapping with not just the aesthetics, but trying to get my inset map not to look like a burning trashcan. Regardless, I am glad I learned the code and how to accomplish the task, even if it wasn't the most aesthetically nice. 
+
+I won't say I didn't like it, but the lab that was significantly more challenging for me was lab 3. Ironically, that is the foundation of what I am trying to accomplish for my project. I had to take a lot of steps back to reread the material, ask questions, and read through the documentation to understand what each line of code was doing.  
+
+
+
+2. Describe the "one thing" you chose to add to your map in Task 3 above. What did you do, and why is it applicable to your map?
+
+I wanted to add the 100 year floodway areas vs the areas that are more commonly at risk to flooding. Though there is only a 1% chance of the "100-year" flood occurring, this is really important for management decisions and engineering design to ensure that the areas along these floodway areas are prepared for any type of flooding. By having better preparation, we can minimize the damage caused by flooding, preventing similar conditions to the Historic Ohio River Flood of 1937.This is applicable to my map as I am trying to understand the areas prone to flooding risk within Cuyahoga County. I overlayed the regular floodway area and the 100 year floodway area to better visualize when the risk of flooding decreases, but is still possible in a "100 year flood". 
