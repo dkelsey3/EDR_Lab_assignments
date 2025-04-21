@@ -118,7 +118,7 @@ plot(psummun)
 
 
 psummunmap <- tm_shape(psummun) + 
-  tm_lines(fill = "NAME", fill_alpha = 0.4, fill.legend = tm_legend_hide(), fill.scale = tm_scale(values = "brewer.set3", n.max = 60)) + 
+  tm_polygons(fill = "NAME", fill_alpha = 0.4, fill.legend = tm_legend_hide(), fill.scale = tm_scale(values = "brewer.set3", n.max = 60)) + 
   tm_shape(st_centroid(psummun)) + 
   tm_text(text = "NAME", size= 0.3, col = "black", fontface = "italic", remove.overlap = F)
 psummunmap 

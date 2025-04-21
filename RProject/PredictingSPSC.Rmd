@@ -5,7 +5,7 @@ date: "2025-03-07"
 output: html_document
 ---
 
-```{r}
+```{r Importing libraries}
 library(tidyverse)
 library(sf)
 library(terra)
@@ -15,7 +15,7 @@ library(tmap)
 library(gstat)
 ```
 
-```{r}
+```{r Set up for creating the raster}
 getwd()
 PWS_pool <- "Pool.shp"
 PWS_elev <- "Elevation.shp"
@@ -44,6 +44,7 @@ plot(PWS.transform)
 #24 geometries
 PWS.transform %>% sf::st_area()
 ```
+
 ```{r Convert ground truth to raster}
 # Polygons
 print(PWS.transform)
@@ -60,6 +61,8 @@ PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
 PWSrasterized_groundtruth <- rasterize(PWS_bind, PWSrast, field = "SPSC", background = NA)
 plot(PWSrasterized_groundtruth)
 ```
+
+Now that we have the ground truth, we want to create some sampling strategies. Our goal is to see which one will produce the least amount of error and will be the closest to our created "ground truth" raster. 
 
 ```{r Randomized point distribution}
 #Creating 50 random sampling points
@@ -138,7 +141,6 @@ PWS.eprandom.raster <- rast(PWS.eprandom.idw)
 plot(PWS.eprandom.raster)
 ```
 
-
 ```{r Regular point distribution}
 #Creating 50 grid sampling points
 
@@ -211,6 +213,67 @@ PWS.epreg.raster <- rast(PWS.epreg.idw)
 plot(PWS.epreg.raster)
 ```
 
+```{r Randomized point distribution, increased sampling size}
+#Creating 50 random sampling points
+#The cool thing about this code is that they are random every time!! 
 
+PWS.point.random.2 <- spatSample(PWSrasterized_groundtruth, 100, method="random", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+  #Note about replace: If TRUE, sampling is with replacement (if method="random")
+
+plot(PWS.point.random.2)
+# Convert to Spatial for gstat (required by gstat::idw)
+
+PWSRandom_points2_sp <- as(PWS.point.random.2, "Spatial")
+#PWS.transform
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSRandom_points2_sp)
+
+# Interpolate using gstat::idw
+PWS.random2.idw <- idw(SPSC ~ 1, PWSRandom_points2_sp, newdata = grid, idp = 2)
+#Notes, breaking down the code
+#formula: Defines the dependent variable as a linear model of independent variables; suppose the dependent variable has name z, for ordinary and simple kriging use the formula z~1; for simple kriging also define beta (see below); for universal kriging, suppose z is linearly dependent on x and y, use the formula z~x+y
+#newdata: object of class Spatial, sf or stars with prediction/simulation locations; should contain attributes with the independent variables (if present).
+#idp: numeric; specify the inverse distance weighting power
+
+# Convert to terra raster
+PWS.random2.raster <- rast(PWS.random2.idw)
+plot(PWS.random2.raster)
+```
+
+```{r Regular point distribution, increased sampling size}
+#Creating 50 grid sampling points
+
+PWS.point.regular.2 <- spatSample(PWSrasterized_groundtruth, 100, method="regular", xy=T, replace = T, as.points = T) %>%
+  tidyterra::filter(., !is.na(SPSC))
+  #Note about replace: If TRUE, sampling is with replacement (if method="random")
+
+plot(PWS.point.regular.2)
+# Convert to Spatial for gstat (required by gstat::idw)
+
+PWSRegular_points2_sp <- as(PWS.point.regular.2, "Spatial")
+#PWS.transform
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSRegular_points2_sp)
+
+# Interpolate using gstat::idw
+PWS.regular2.idw <- idw(SPSC ~ 1, PWSRegular_points2_sp, newdata = grid, idp = 2)
+
+# Convert to terra raster
+PWS.regular2.raster <- rast(PWS.regular2.idw)
+plot(PWS.regular2.raster)
+```
+
+Currently we have 6 different sampling types. 2 random - one has 50 sampling points, one has 100. 2 regular - one has 50 sampling points, one has 100. Finally, sampling 50 points based off type, pools and elevation. Our next step is to calculate the rasters. The question: Which sampling method is closest to the truth? 
+
+```{r Calculation and getting the error margin}
 
 
