@@ -53,7 +53,7 @@ library(spdep)
 - Use an equal-interval classification method with 5 classes. Determine the breaks programmatically.
 - Do NOT use the default color scheme
 
-```{r}
+```{r Task 1}
 #Spatial dataset: County_Boundaries.shp
 #Non-spatial dataset: BMPreport2016_landbmps.csv
 
@@ -107,7 +107,7 @@ leaflet() %>%
 
 - Add a control to change between 3 different basemaps
 
-```{r}
+```{r Task 2}
 kot <- sf::read_sf("./task2/kotvw_statesubset.shp") %>% sf::st_make_valid()  %>% st_transform(., "EPSG:4326")
 
 str(kot)
@@ -148,24 +148,22 @@ moran.plot(kot$normalized_by_population, lw.ko, zero.policy=FALSE, plot=TRUE)
 local_moran <- localmoran(kot$normalized_by_population, lw.ko, zero.policy=FALSE)
 kot$p_value <- local_moran[,5] 
 
-#lm <- localmoran(kot$normalized_by_population, lw.ko, zero.policy = FALSE)
-#view(lm)
-
 #USED THIS WEBSITE FOR THE SCALE CODE UP UNTIL QUAD_COLOR!!! https://web.pdx.edu/~scm6/local_spatial_autocorrelation_and_leaflet.html
 
-scale_pct_snap <- scale(kot$normalized_by_population) 
-scale_lag_pct_snap <- scale(F25.2r.lag)  
+kotnp_scale <- scale(kot$normalized_by_population) 
+kotnp_scale_lag <- scale(F25.2r.lag)  
 
-hh <- as.vector(scale_pct_snap > 0 & scale_lag_pct_snap > 0)
-lh <- as.vector(scale_pct_snap < 0 & scale_lag_pct_snap > 0)
-ll <- as.vector(scale_pct_snap < 0 & scale_lag_pct_snap < 0)
-hl <- as.vector(scale_pct_snap > 0 & scale_lag_pct_snap < 0)
+HH <- as.vector(kotnp_scale > 0 & kotnp_scale_lag > 0)
+LH <- as.vector(kotnp_scale < 0 & kotnp_scale_lag > 0)
+LL <- as.vector(kotnp_scale < 0 & kotnp_scale_lag < 0)
+HL <- as.vector(kotnp_scale > 0 & kotnp_scale_lag < 0)
 
-quad_color <- NA
-quad_color <- ifelse(hh, 'red', quad_color)
-quad_color <- ifelse(lh, 'skyblue', quad_color)
-quad_color <- ifelse(ll, 'navy', quad_color)
-quad_color <- ifelse(hl, 'orange', quad_color)
+#Making color object
+morancolor <- NA
+morancolor <- ifelse(HH, 'orangered', morancolor)
+morancolor <- ifelse(LH, 'skyblue', morancolor)
+morancolor <- ifelse(LL, 'navy', morancolor)
+morancolor <- ifelse(HL, 'darkorange', morancolor)
 
 
 leaflet() %>% 
@@ -174,7 +172,7 @@ leaflet() %>%
     data = kot,
     weight = 1,
   color = 'black',
-  fillColor = quad_color, # Created color ramp
+  fillColor = morancolor, # Created color ramp
   fillOpacity = 0.7,
   label = paste("P-value", 
       kot$p_value)
@@ -213,7 +211,7 @@ leaflet() %>%
 - Since everyone's maps are different, I can't specify exactly what else you should add. But, find one thing cool, interesting, or applicable to YOUR map, and implement it.
 
 
-```{r}
+```{r Task 3}
 
 #Import 
 ohcounties <- sf::read_sf("./task3/ohio/oh_counties.gpkg") %>%  sf::st_make_valid() %>% st_transform(., "EPSG:4326")
@@ -319,10 +317,7 @@ leaflet() %>%
 
 There was so much I learned this semester. I learned how to code maps, how to conduct raster math, I learned about kriging and idw, and the endless possibilities of R! I also learned that it is very important to think about the end goal before starting the code. Sure, I heard it multiple times to think about the end goal and to think about the process before starting, but it was only really working in this class that it began to really materialize how truly important that thought process is. I would dive in and overwhelm myself often, but as soon as I took a step back to understand what I am trying to accomplish and even reading through some of the stats, things began to click and coding became easier. I am slowly getting faster and I am really proud of myself for the progress I have made. 
 
-In lab 4, the inset map I will forever hold a grudge towards. I got bogged down with the static mapping with not just the aesthetics, but trying to get my inset map not to look like a burning trashcan. Regardless, I am glad I learned the code and how to accomplish the task, even if it wasn't the most aesthetically nice. 
-
-I won't say I didn't like it, but the lab that was significantly more challenging for me was lab 3. Ironically, that is the foundation of what I am trying to accomplish for my project. I had to take a lot of steps back to reread the material, ask questions, and read through the documentation to understand what each line of code was doing.  
-
+Lab 4 was the most difficult. I got bogged down with the static mapping with not just the aesthetics, but trying to get my inset map to work. Regardless, I am glad I learned the code and how to accomplish the task, even if it wasn't the most aesthetically nice. I won't say I didn't like it, but the lab that was significantly more challenging for me was lab 3. Ironically, that is the foundation of what I am trying to accomplish for my project. I had to take a lot of steps back to reread the material, ask questions, and read through the documentation to understand what each line of code was doing.  
 
 
 2. Describe the "one thing" you chose to add to your map in Task 3 above. What did you do, and why is it applicable to your map?
