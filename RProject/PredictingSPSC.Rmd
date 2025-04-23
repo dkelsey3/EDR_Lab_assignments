@@ -13,6 +13,7 @@ library(dplyr)
 library(spData)
 library(tmap)
 library(gstat)
+library(sp)
 ```
 
 ```{r Set up for creating the raster}
@@ -34,11 +35,10 @@ plot(e.PWS)
 #Need to combine shapefiles!
 
 PWS_bind <- rbind(p.PWS, e.PWS)
-
 plot(PWS_bind)
 #Checking to see if they combined and they did :D
 
-PWS.transform <- PWS_bind %>% sf::st_transform(., crs = 3857)
+PWS.transform <- PWS_bind %>% sf::st_transform(., crs = "EPSG:3857")
 
 plot(PWS.transform)
 #24 geometries
@@ -47,7 +47,7 @@ PWS.transform %>% sf::st_area()
 
 ```{r Convert ground truth to raster}
 # Polygons
-print(PWS.transform)
+print(PWS_bind)
 
 #Define the extent of the raster based on the shapefile's bounding box
 extentofPWS <- ext(st_bbox(PWS_bind))  # Use the bounding box of the shapefile
@@ -60,6 +60,16 @@ PWSrows <- 100  # Set number of rows
 PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
 PWSrasterized_groundtruth <- rasterize(PWS_bind, PWSrast, field = "SPSC", background = NA)
 plot(PWSrasterized_groundtruth)
+crs(PWSrasterized_groundtruth) <- "EPSG:3857" 
+crs(PWSrasterized_groundtruth)
+
+crs(PWS_bind)
+PWSrasterized_groundtruth <- mask(crop(PWSrasterized_groundtruth, PWS_bind), PWS_bind)
+
+#How many valid (non-NA) cells are there? 
+sum(!is.na(values(PWSrasterized_groundtruth$SPSC)))
+plot(!is.na(PWSrasterized_groundtruth$SPSC))
+
 ```
 
 Now that we have the ground truth, we want to create some sampling strategies. Our goal is to see which one will produce the least amount of error and will be the closest to our created "ground truth" raster. 
@@ -68,10 +78,10 @@ Now that we have the ground truth, we want to create some sampling strategies. O
 #Creating 50 random sampling points
 #The cool thing about this code is that they are random every time!! 
 
-PWS.point.random <- spatSample(PWSrasterized_groundtruth, 50, method="random", xy=T, replace = T, as.points = T) %>%
+PWS.point.random <- spatSample(PWSrasterized_groundtruth$SPSC, 50, method="random", xy=T, replace = T, as.points = T) %>%
   tidyterra::filter(., !is.na(SPSC))
   #Note about replace: If TRUE, sampling is with replacement (if method="random")
-
+nrow(PWS.point.random)
 plot(PWS.point.random)
 # Convert to Spatial for gstat (required by gstat::idw)
 
@@ -96,6 +106,28 @@ PWS.random.raster <- rast(PWS.random.idw)
 plot(PWS.random.raster)
 ```
 
+
+
+```{r}
+# First, get the raster layer with only non-NA cells
+valid_cells <- which(!is.na(values(PWSrasterized_groundtruth$SPSC)))
+
+# Create a mask that only includes those valid cells
+valid_mask <- PWSrasterized_groundtruth
+values(valid_mask) <- !is.na(values(PWSrasterized_groundtruth$SPSC))
+
+# Use spatSample with that mask
+PWS.point.random <- spatSample(valid_mask, 50, method="random", xy=TRUE, replace=TRUE, as.points=TRUE)
+
+# Extract the SPSC values at those points
+PWS.point.random$SPSC <- terra::extract(PWSrasterized_groundtruth$SPSC, PWS.point.random)[,2]
+
+# Double-check
+nrow(PWS.point.random)  # Should be 50 now
+plot(PWS.point.random)
+
+```
+
 ```{r Randomized point distribution within polygons based on type}
 
 PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
@@ -104,6 +136,8 @@ plot(PWSrasterized_pool)
 
 PWSpoolraster_random <- spatSample(PWSrasterized_pool, 30, method="random", xy=T, replace = T, as.points = T) %>%
   tidyterra::filter(., !is.na(SPSC))
+nrow(PWSpoolraster_random)
+plot(PWSpoolraster_random)
 
 PWSrasterized_elev <- rasterize(e.PWS, PWSrast, field = "SPSC", background = NA)
 plot(PWSrasterized_elev)
@@ -111,6 +145,7 @@ plot(PWSrasterized_elev)
 PWSelevraster_random<- spatSample(PWSrasterized_elev, 20, method="random", xy=T, replace = T, as.points = T) %>%
   tidyterra::filter(., !is.na(SPSC))
 
+nrow(PWSelevraster_random)
 #Bind points together after sampling from different features
 PWS_ep_point <- rbind(PWSelevraster_random, PWSpoolraster_random)
 plot(PWS_ep_point)
@@ -276,4 +311,4 @@ Currently we have 6 different sampling types. 2 random - one has 50 sampling poi
 
 ```{r Calculation and getting the error margin}
 
-
+Reg100 <-  PWS.regular2.raster - PWSrasterized_groundtruth
