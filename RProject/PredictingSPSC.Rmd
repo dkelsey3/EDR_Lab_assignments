@@ -107,7 +107,7 @@ crs(PWS.random.raster)
 
 #First sample from pools
 PWSvect <- terra::vect(PWS.transform)
-PWS.point.randompool <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "random")
+PWS.point.randompool <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 40, type = "random")
 plot(PWS.point.randompool)
 
 PWS.point.randompoolsf <- st_sf(geometry = PWS.point.randompool)
@@ -181,7 +181,7 @@ crs(PWS.regular.raster)
 ```{r Regular point distribution within polygons based on type}
 #First sample from pools
 PWSvect <- terra::vect(PWS.transform)
-PWS.point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "regular")
+PWS.point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 40, type = "regular")
 plot(PWS.point.poolregular)
 
 PWS.point.poolregularsf <- st_sf(geometry = PWS.point.randompool)
