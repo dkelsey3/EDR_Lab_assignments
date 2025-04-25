@@ -43,32 +43,31 @@ PWS.transform <- PWS_bind %>% sf::st_transform(., crs = "EPSG:3857")
 plot(PWS.transform)
 #24 geometries
 PWS.transform %>% sf::st_area()
+
+
 ```
 
 ```{r Convert ground truth to raster}
 # Polygons
-print(PWS_bind)
+print(PWS.transform)
 
 #Define the extent of the raster based on the shapefile's bounding box
-extentofPWS <- ext(st_bbox(PWS_bind))  # Use the bounding box of the shapefile
+extentofPWS <- ext(st_bbox(PWS.transform))  # Use the bounding box of the shapefile
 
 # Set raster resolution
 PWScols <- 100  # Set number of columns
 PWSrows <- 100  # Set number of rows
 
+#Make crs object for terra::project
+WGS84 <- "+init=EPSG:3857"
+
 # Create an empty raster template with the specified extent and resolution
 PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
-PWSrasterized_groundtruth <- rasterize(PWS_bind, PWSrast, field = "SPSC", background = NA)
+PWSrasterized_groundtruth <- rasterize(PWS.transform, PWSrast, field = "SPSC", background = NA) 
+crs(PWSrasterized_groundtruth) <- "EPSG:3857" #This was the only way to reproject the crs that seemed to work. 
+
 plot(PWSrasterized_groundtruth)
-crs(PWSrasterized_groundtruth) <- "EPSG:3857" 
 crs(PWSrasterized_groundtruth)
-
-crs(PWS_bind)
-PWSrasterized_groundtruth <- mask(crop(PWSrasterized_groundtruth, PWS_bind), PWS_bind)
-
-#How many valid (non-NA) cells are there? 
-sum(!is.na(values(PWSrasterized_groundtruth$SPSC)))
-plot(!is.na(PWSrasterized_groundtruth$SPSC))
 
 ```
 
@@ -77,15 +76,15 @@ Now that we have the ground truth, we want to create some sampling strategies. O
 ```{r Randomized point distribution}
 #Creating 50 random sampling points
 #The cool thing about this code is that they are random every time!! 
-
-PWS.point.random <- spatSample(PWSrasterized_groundtruth$SPSC, 50, method="random", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
-  #Note about replace: If TRUE, sampling is with replacement (if method="random")
-nrow(PWS.point.random)
+PWSvect <- terra::vect(PWS.transform)
+PWS.point.random <- st_sample(PWS.transform, size = 50, type = "random")
 plot(PWS.point.random)
-# Convert to Spatial for gstat (required by gstat::idw)
 
-PWSRandom_points_sp <- as(PWS.point.random, "Spatial")
+PWS.point.randomsf <- st_sf(geometry = PWS.point.random)
+PWS.point.randomjoin <- st_join(PWS.point.randomsf, PWS.transform)
+
+# Convert to Spatial for gstat (required by gstat::idw)
+PWSRandom_points_sp <- as(PWS.point.randomjoin, "Spatial")
 #PWS.transform
 
 # Create empty raster grid for interpolation
@@ -102,52 +101,33 @@ PWS.random.idw <- idw(SPSC ~ 1, PWSRandom_points_sp, newdata = grid, idp = 2)
 #idp: numeric; specify the inverse distance weighting power
 
 # Convert to terra raster
-PWS.random.raster <- rast(PWS.random.idw)
+PWS.random.raster <- rast(PWS.random.idw, crs = "EPSG:3857")
 plot(PWS.random.raster)
-```
-
-
-
-```{r}
-# First, get the raster layer with only non-NA cells
-valid_cells <- which(!is.na(values(PWSrasterized_groundtruth$SPSC)))
-
-# Create a mask that only includes those valid cells
-valid_mask <- PWSrasterized_groundtruth
-values(valid_mask) <- !is.na(values(PWSrasterized_groundtruth$SPSC))
-
-# Use spatSample with that mask
-PWS.point.random <- spatSample(valid_mask, 50, method="random", xy=TRUE, replace=TRUE, as.points=TRUE)
-
-# Extract the SPSC values at those points
-PWS.point.random$SPSC <- terra::extract(PWSrasterized_groundtruth$SPSC, PWS.point.random)[,2]
-
-# Double-check
-nrow(PWS.point.random)  # Should be 50 now
-plot(PWS.point.random)
-
+crs(PWS.random.raster)
 ```
 
 ```{r Randomized point distribution within polygons based on type}
 
-PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
-PWSrasterized_pool <- rasterize(p.PWS, PWSrast, field = "SPSC", background = NA)
-plot(PWSrasterized_pool)
+#First sample from pools
+PWSvect <- terra::vect(PWS.transform)
+PWS.point.randompool <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "random")
+plot(PWS.point.randompool)
 
-PWSpoolraster_random <- spatSample(PWSrasterized_pool, 30, method="random", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
-nrow(PWSpoolraster_random)
-plot(PWSpoolraster_random)
+PWS.point.randompoolsf <- st_sf(geometry = PWS.point.randompool)
+PWS.point.randompooljoin <- st_join(PWS.point.randompoolsf, PWS.transform)
 
-PWSrasterized_elev <- rasterize(e.PWS, PWSrast, field = "SPSC", background = NA)
-plot(PWSrasterized_elev)
+#Then sample from elevation
+PWS.point.randomelev <- PWS.transform %>% dplyr::filter(str_detect(ID, "Elev")) %>% st_sample(PWS.transform, size = 20, type = "random")
+plot(PWS.point.randomelev)
 
-PWSelevraster_random<- spatSample(PWSrasterized_elev, 20, method="random", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
 
-nrow(PWSelevraster_random)
+PWS.point.randomelevsf <- st_sf(geometry = PWS.point.randomelev)
+PWS.point.randomelevjoin <- st_join(PWS.point.randomelevsf, PWS.transform)
+
+
+
 #Bind points together after sampling from different features
-PWS_ep_point <- rbind(PWSelevraster_random, PWSpoolraster_random)
+PWS_ep_point <- st_union(PWS.point.randomelevjoin, PWS.point.randompooljoin)
 plot(PWS_ep_point)
 
 
@@ -155,12 +135,6 @@ plot(PWS_ep_point)
 PWSpecom_sf <- sf::st_as_sf(PWS_ep_point)
 #Then to SpatialPointsDataFrame
 PWSpecom_sp <- as(PWSpecom_sf, "Spatial")
-
-
-#PWS_ep_com_raster <- rasterize(PWS_ep_point, PWSrast, field = "SPSC", background = NA)
-# Convert to Spatial for gstat (required by gstat::idw)
-#PWSpecom_sp <- as(PWS_ep_com_raster, "Spatial")
-#PWS.transform
 
 # Create empty raster grid for interpolation
 grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
@@ -172,21 +146,24 @@ proj4string(grid) <- proj4string(PWSpecom_sp)
 PWS.eprandom.idw <- idw(SPSC ~ 1, PWSpecom_sp, newdata = grid, idp = 2)
 
 # Convert to terra raster
-PWS.eprandom.raster <- rast(PWS.eprandom.idw)
+PWS.eprandom.raster <- rast(PWS.eprandom.idw, crs = "EPSG:3857")
 plot(PWS.eprandom.raster)
+crs(PWS.eprandom.raster)
 ```
 
 ```{r Regular point distribution}
 #Creating 50 grid sampling points
+PWSvect <- terra::vect(PWS.transform)
+PWS.point.regular <- st_sample(PWS.transform, size = 50, type = "regular")
+plot(PWS.point.regular)
 
-PWS.point.regular <- spatSample(PWSrasterized_groundtruth, 50, method="regular", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
-  #Note about replace: If TRUE, sampling is with replacement (if method="random")
+PWS.point.regularsf <- st_sf(geometry = PWS.point.regular)
+PWS.point.regularjoin <- st_join(PWS.point.regularsf, PWS.transform)
 
 plot(PWS.point.regular)
 # Convert to Spatial for gstat (required by gstat::idw)
 
-PWSRegular_points_sp <- as(PWS.point.regular, "Spatial")
+PWSRegular_points_sp <- as(PWS.point.regularjoin, "Spatial")
 #PWS.transform
 
 # Create empty raster grid for interpolation
@@ -199,27 +176,31 @@ proj4string(grid) <- proj4string(PWSRegular_points_sp)
 PWS.regular.idw <- idw(SPSC ~ 1, PWSRegular_points_sp, newdata = grid, idp = 2)
 
 # Convert to terra raster
-PWS.regular.raster <- rast(PWS.regular.idw)
+PWS.regular.raster <- rast(PWS.regular.idw, crs= "EPSG:3857")
 plot(PWS.regular.raster)
+crs(PWS.regular.raster)
 ```
 
 ```{r Regular point distribution within polygons based on type}
+#First sample from pools
+PWSvect <- terra::vect(PWS.transform)
+PWS.point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "regular")
+plot(PWS.point.poolregular)
 
-PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
-PWSrasterized_pool <- rasterize(p.PWS, PWSrast, field = "SPSC", background = NA)
-plot(PWSrasterized_pool)
+PWS.point.poolregularsf <- st_sf(geometry = PWS.point.randompool)
+PWS.point.poolregularjoin <- st_join(PWS.point.poolregularsf, PWS.transform)
 
-PWSpoolraster_regular <- spatSample(PWSrasterized_pool, 30, method="regular", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
+#Then sample from elevation
+PWS.point.regularelev <- PWS.transform %>% dplyr::filter(str_detect(ID, "Elev")) %>% st_sample(PWS.transform, size = 20, type = "regular")
+plot(PWS.point.regularelev)
 
-PWSrasterized_elev <- rasterize(e.PWS, PWSrast, field = "SPSC", background = NA)
-plot(PWSrasterized_elev)
 
-PWSelevraster_regular <- spatSample(PWSrasterized_elev, 20, method="regular", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
+PWS.point.regularelevsf <- st_sf(geometry = PWS.point.regularelev)
+PWS.point.regularelevjoin <- st_join(PWS.point.regularelevsf, PWS.transform)
 
-#Bind points together after sampling from different features
-PWS_ep_pointreg <- rbind(PWSelevraster_regular, PWSpoolraster_regular)
+
+#Union the points together after sampling from different features
+PWS_ep_pointreg <- st_union(PWS.point.regularelevjoin, PWS.point.poolregularjoin)
 plot(PWS_ep_pointreg)
 
 
@@ -228,11 +209,6 @@ PWSpecomreg_sf <- sf::st_as_sf(PWS_ep_pointreg)
 #Then to SpatialPointsDataFrame
 PWSpecomreg_sp <- as(PWSpecomreg_sf, "Spatial")
 
-
-#PWS_ep_com_raster <- rasterize(PWS_ep_point, PWSrast, field = "SPSC", background = NA)
-# Convert to Spatial for gstat (required by gstat::idw)
-#PWSpecom_sp <- as(PWS_ep_com_raster, "Spatial")
-#PWS.transform
 
 # Create empty raster grid for interpolation
 grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
@@ -244,71 +220,172 @@ proj4string(grid) <- proj4string(PWSpecomreg_sp)
 PWS.epreg.idw <- idw(SPSC ~ 1, PWSpecomreg_sp, newdata = grid, idp = 2)
 
 # Convert to terra raster
-PWS.epreg.raster <- rast(PWS.epreg.idw)
+PWS.epreg.raster <- rast(PWS.epreg.idw, crs = "EPSG:3857")
 plot(PWS.epreg.raster)
+crs(PWS.epreg.raster)
 ```
 
-```{r Randomized point distribution, increased sampling size}
-#Creating 50 random sampling points
-#The cool thing about this code is that they are random every time!! 
+```{r Oversampling specfic pool, 80 samples total}
 
-PWS.point.random.2 <- spatSample(PWSrasterized_groundtruth, 100, method="random", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
-  #Note about replace: If TRUE, sampling is with replacement (if method="random")
+#First sample from pools
+PWSvect <- terra::vect(PWS.transform)
+PWS.point.pool8 <- PWS.transform %>% dplyr::filter(ID == "Pool 8") %>% st_sample(PWS.transform, size = 30, type = "random")
+plot(PWS.point.randompool)
 
-plot(PWS.point.random.2)
-# Convert to Spatial for gstat (required by gstat::idw)
+PWS.point.pool8sf <- st_sf(geometry = PWS.point.pool8)
+PWS.point.pool8join <- st_join(PWS.point.pool8sf, PWS.transform)
 
-PWSRandom_points2_sp <- as(PWS.point.random.2, "Spatial")
-#PWS.transform
+#Then sample from elevation
+PWS.point.randomdis <- PWS.transform %>%  dplyr::filter(ID != "Pool 8") %>%st_sample(PWS.transform, size = 50, type = "random")
+plot(PWS.point.randomdis)
+
+
+PWS.point.randomdissf <- st_sf(geometry = PWS.point.randomdis)
+PWS.point.randomdisjoin <- st_join(PWS.point.randomdissf, PWS.transform)
+
+
+
+#Bind points together after sampling from different features
+PWS_point_pool8andrandom <- st_union(PWS.point.pool8join, PWS.point.randomdisjoin)
+plot(PWS_point_pool8andrandom)
+
+
+#Convert sample points to sf
+PWSpool8ran_sf <- sf::st_as_sf(PWS_point_pool8andrandom)
+#Then to SpatialPointsDataFrame
+PWSpool8ran_sp <- as(PWSpool8ran_sf, "Spatial")
 
 # Create empty raster grid for interpolation
 grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
 sp::coordinates(grid) <- ~ x + y
 gridded(grid) <- TRUE
-proj4string(grid) <- proj4string(PWSRandom_points2_sp)
+proj4string(grid) <- proj4string(PWSpool8ran_sp)
 
 # Interpolate using gstat::idw
-PWS.random2.idw <- idw(SPSC ~ 1, PWSRandom_points2_sp, newdata = grid, idp = 2)
-#Notes, breaking down the code
-#formula: Defines the dependent variable as a linear model of independent variables; suppose the dependent variable has name z, for ordinary and simple kriging use the formula z~1; for simple kriging also define beta (see below); for universal kriging, suppose z is linearly dependent on x and y, use the formula z~x+y
-#newdata: object of class Spatial, sf or stars with prediction/simulation locations; should contain attributes with the independent variables (if present).
-#idp: numeric; specify the inverse distance weighting power
+PWS.pool8ran.idw <- idw(SPSC ~ 1, PWSpool8ran_sp, newdata = grid, idp = 2)
 
 # Convert to terra raster
-PWS.random2.raster <- rast(PWS.random2.idw)
-plot(PWS.random2.raster)
+PWS.pool8ran.raster <- rast(PWS.pool8ran.idw, crs = "EPSG:3857")
+plot(PWS.pool8ran.raster)
+crs(PWS.pool8ran.raster)
 ```
 
-```{r Regular point distribution, increased sampling size}
-#Creating 50 grid sampling points
+```{r Regular point distribution within polygons based on type, 100 points in total}
+#First sample from pools
+PWSvect <- terra::vect(PWS.transform)
+PWS.100point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "regular")
+plot(PWS.100point.poolregular)
 
-PWS.point.regular.2 <- spatSample(PWSrasterized_groundtruth, 100, method="regular", xy=T, replace = T, as.points = T) %>%
-  tidyterra::filter(., !is.na(SPSC))
-  #Note about replace: If TRUE, sampling is with replacement (if method="random")
+PWS.point.100poolregularsf <- st_sf(geometry = PWS.point.randompool)
+PWS.point.100poolregularjoin <- st_join(PWS.point.poolregularsf, PWS.transform)
 
-plot(PWS.point.regular.2)
-# Convert to Spatial for gstat (required by gstat::idw)
+#Then sample from elevation
+PWS.point.100regularelev <- PWS.transform %>% dplyr::filter(str_detect(ID, "Elev")) %>% st_sample(PWS.transform, size = 70, type = "regular")
+plot(PWS.point.100regularelev)
 
-PWSRegular_points2_sp <- as(PWS.point.regular.2, "Spatial")
-#PWS.transform
+
+PWS.100point.regularelevsf <- st_sf(geometry = PWS.point.100regularelev)
+PWS.100point.regularelevjoin <- st_join(PWS.100point.regularelevsf, PWS.transform)
+
+
+#Union the points together after sampling from different features
+PWS_ep_100pointreg <- st_union(PWS.100point.regularelevjoin, PWS.point.100poolregularjoin)
+plot(PWS_ep_100pointreg)
+
+
+#Convert sample points to sf
+PWSpecomreg100_sf <- sf::st_as_sf(PWS_ep_100pointreg)
+#Then to SpatialPointsDataFrame
+PWSpecomreg100_sp <- as(PWSpecomreg100_sf, "Spatial")
+
 
 # Create empty raster grid for interpolation
 grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
 sp::coordinates(grid) <- ~ x + y
 gridded(grid) <- TRUE
-proj4string(grid) <- proj4string(PWSRegular_points2_sp)
+proj4string(grid) <- proj4string(PWSpecomreg100_sp)
 
 # Interpolate using gstat::idw
-PWS.regular2.idw <- idw(SPSC ~ 1, PWSRegular_points2_sp, newdata = grid, idp = 2)
+PWS.epreg100.idw <- idw(SPSC ~ 1, PWSpecomreg100_sp, newdata = grid, idp = 2)
 
 # Convert to terra raster
-PWS.regular2.raster <- rast(PWS.regular2.idw)
-plot(PWS.regular2.raster)
+PWS.epreg100.raster <- rast(PWS.epreg100.idw, crs = "EPSG:3857")
+plot(PWS.epreg100.raster)
+crs(PWS.epreg100.raster)
 ```
 
-Currently we have 6 different sampling types. 2 random - one has 50 sampling points, one has 100. 2 regular - one has 50 sampling points, one has 100. Finally, sampling 50 points based off type, pools and elevation. Our next step is to calculate the rasters. The question: Which sampling method is closest to the truth? 
+```{r Randomized point distribution within polygons based on type, 100 points in total}
+
+#First sample from pools
+PWSvect <- terra::vect(PWS.transform)
+PWS.100point.randompool <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "random")
+plot(PWS.100point.randompool)
+
+PWS.100point.randompoolsf <- st_sf(geometry = PWS.100point.randompool)
+PWS.100point.randompooljoin <- st_join(PWS.100point.randompoolsf, PWS.transform)
+
+#Then sample from elevation
+PWS.100point.randomelev <- PWS.transform %>% dplyr::filter(str_detect(ID, "Elev")) %>% st_sample(PWS.transform, size = 70, type = "random")
+plot(PWS.100point.randomelev)
+
+
+PWS.100point.randomelevsf <- st_sf(geometry = PWS.100point.randomelev)
+PWS.100point.randomelevjoin <- st_join(PWS.100point.randomelevsf, PWS.transform)
+
+
+
+#Bind points together after sampling from different features
+PWS_ep_100point <- st_union(PWS.100point.randomelevjoin, PWS.100point.randompooljoin)
+plot(PWS_ep_100point)
+
+
+#Convert sample points to sf
+PWSpecom100_sf <- sf::st_as_sf(PWS_ep_point)
+#Then to SpatialPointsDataFrame
+PWSpecom100_sp <- as(PWSpecom100_sf, "Spatial")
+
+# Create empty raster grid for interpolation
+grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
+sp::coordinates(grid) <- ~ x + y
+gridded(grid) <- TRUE
+proj4string(grid) <- proj4string(PWSpecom100_sp)
+
+# Interpolate using gstat::idw
+PWS.eprandom100.idw <- idw(SPSC ~ 1, PWSpecom100_sp, newdata = grid, idp = 2)
+
+# Convert to terra raster
+PWS.eprandom100.raster <- rast(PWS.eprandom100.idw, crs = "EPSG:3857")
+plot(PWS.eprandom100.raster)
+crs(PWS.eprandom100.raster)
+```
+Currently we have 7 different sampling types. Now it is time to calculate those rasters
 
 ```{r Calculation and getting the error margin}
 
-Reg100 <-  PWS.regular2.raster - PWSrasterized_groundtruth
+random <-  PWS.random.raster - PWSrasterized_groundtruth
+regular <- PWS.regular.raster - PWSrasterized_groundtruth
+pool <- PWS.pool8ran.raster - PWSrasterized_groundtruth
+typerandom <- PWS.eprandom.raster - PWSrasterized_groundtruth
+typeregular <- PWS.epreg.raster - PWSrasterized_groundtruth
+typeregular_100 <- PWS.epreg100.raster - PWSrasterized_groundtruth
+typerandom_100 <- PWS.eprandom100.raster - PWSrasterized_groundtruth
+
+plot(random)
+plot(regular)
+plot(pool)
+plot(typerandom)
+plot(typeregular)
+plot(typeregular_100)
+plot(typerandom_100)
+#Root Mean Square Error (RMSE) measures the average difference between a statistical model's predicted values and the actual values.
+
+sqrt(mean(random[]^2, na.rm=TRUE))
+sqrt(mean(regular[]^2, na.rm=TRUE))
+sqrt(mean(pool[]^2, na.rm=TRUE))
+sqrt(mean(typerandom[]^2, na.rm=TRUE))
+sqrt(mean(typeregular[]^2, na.rm=TRUE))
+sqrt(mean(typeregular_100[]^2, na.rm=TRUE))
+sqrt(mean(typerandom_100[]^2, na.rm=TRUE))
+
+#Least error is random sampling! Worst is oversampling a single pool while sampling only a few other points
+```
