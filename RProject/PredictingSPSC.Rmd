@@ -58,9 +58,6 @@ extentofPWS <- ext(st_bbox(PWS.transform))  # Use the bounding box of the shapef
 PWScols <- 100  # Set number of columns
 PWSrows <- 100  # Set number of rows
 
-#Make crs object for terra::project
-WGS84 <- "+init=EPSG:3857"
-
 # Create an empty raster template with the specified extent and resolution
 PWSrast <- rast(extentofPWS, ncols = PWScols, nrows = PWSrows)
 PWSrasterized_groundtruth <- rasterize(PWS.transform, PWSrast, field = "SPSC", background = NA) 
@@ -229,8 +226,8 @@ crs(PWS.epreg.raster)
 
 #First sample from pools
 PWSvect <- terra::vect(PWS.transform)
-PWS.point.pool8 <- PWS.transform %>% dplyr::filter(ID == "Pool 8") %>% st_sample(PWS.transform, size = 30, type = "random")
-plot(PWS.point.randompool)
+PWS.point.pool8 <- PWS.transform %>% dplyr::filter(ID == "Pool 8") %>% st_sample(., size = 30, type = "random")
+plot(PWS.point.pool8)
 
 PWS.point.pool8sf <- st_sf(geometry = PWS.point.pool8)
 PWS.point.pool8join <- st_join(PWS.point.pool8sf, PWS.transform)
@@ -276,8 +273,8 @@ PWSvect <- terra::vect(PWS.transform)
 PWS.100point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "regular")
 plot(PWS.100point.poolregular)
 
-PWS.point.100poolregularsf <- st_sf(geometry = PWS.point.randompool)
-PWS.point.100poolregularjoin <- st_join(PWS.point.poolregularsf, PWS.transform)
+PWS.point.100poolregularsf <- st_sf(geometry = PWS.100point.poolregular)
+PWS.point.100poolregularjoin <- st_join(PWS.point.100poolregularsf, PWS.transform)
 
 #Then sample from elevation
 PWS.point.100regularelev <- PWS.transform %>% dplyr::filter(str_detect(ID, "Elev")) %>% st_sample(PWS.transform, size = 70, type = "regular")
@@ -340,7 +337,7 @@ plot(PWS_ep_100point)
 
 
 #Convert sample points to sf
-PWSpecom100_sf <- sf::st_as_sf(PWS_ep_point)
+PWSpecom100_sf <- sf::st_as_sf(PWS_ep_100point)
 #Then to SpatialPointsDataFrame
 PWSpecom100_sp <- as(PWSpecom100_sf, "Spatial")
 
