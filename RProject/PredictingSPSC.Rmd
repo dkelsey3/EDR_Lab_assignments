@@ -21,12 +21,15 @@ getwd()
 PWS_pool <- "Pool.shp"
 PWS_elev <- "Elevation.shp"
 
+#Read simple features or layers
 p.PWS <- sf::read_sf(PWS_pool)
 e.PWS <- sf::read_sf(PWS_elev)
 
 glimpse(p.PWS)
 glimpse(e.PWS)
 
+#Check validity or make an invalid geometry valid
+Description
 p.PWS %>% sf::st_is_valid()
 e.PWS %>% sf::st_is_valid()
 
@@ -38,6 +41,7 @@ PWS_bind <- rbind(p.PWS, e.PWS)
 plot(PWS_bind)
 #Checking to see if they combined and they did :D
 
+#Transform to 
 PWS.transform <- PWS_bind %>% sf::st_transform(., crs = "EPSG:3857")
 
 plot(PWS.transform)
@@ -73,12 +77,13 @@ Now that we have the ground truth, we want to create some sampling strategies. O
 ```{r Randomized point distribution}
 #Creating 50 random sampling points
 #The cool thing about this code is that they are random every time!! 
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.point.random <- st_sample(PWS.transform, size = 60, type = "random")
 plot(PWS.point.random)
 
 PWS.point.randomsf <- st_sf(geometry = PWS.point.random)
 PWS.point.randomjoin <- st_join(PWS.point.randomsf, PWS.transform)
+#SPSC values from the original vector
 
 # Convert to Spatial for gstat (required by gstat::idw)
 PWSRandom_points_sp <- as(PWS.point.randomjoin, "Spatial")
@@ -106,7 +111,7 @@ crs(PWS.random.raster)
 ```{r Randomized point distribution within polygons based on type}
 
 #First sample from pools
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.point.randompool <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 40, type = "random")
 plot(PWS.point.randompool)
 
@@ -150,7 +155,7 @@ crs(PWS.eprandom.raster)
 
 ```{r Regular point distribution}
 #Creating 50 grid sampling points
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.point.regular <- st_sample(PWS.transform, size = 60, type = "regular")
 plot(PWS.point.regular)
 
@@ -180,7 +185,7 @@ crs(PWS.regular.raster)
 
 ```{r Regular point distribution within polygons based on type}
 #First sample from pools
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 40, type = "regular")
 plot(PWS.point.poolregular)
 
@@ -225,7 +230,7 @@ crs(PWS.epreg.raster)
 ```{r Oversampling specfic pool, 80 samples total}
 
 #First sample from pools
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.point.pool8 <- PWS.transform %>% dplyr::filter(ID == "Pool 9") %>% st_sample(., size = 30, type = "random")
 plot(PWS.point.pool8)
 
@@ -269,7 +274,7 @@ crs(PWS.pool8ran.raster)
 
 ```{r Regular point distribution within polygons based on type, 100 points in total}
 #First sample from pools
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.100point.poolregular <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "regular")
 plot(PWS.100point.poolregular)
 
@@ -314,7 +319,7 @@ crs(PWS.epreg100.raster)
 ```{r Randomized point distribution within polygons based on type, 100 points in total}
 
 #First sample from pools
-PWSvect <- terra::vect(PWS.transform)
+#PWSvect <- terra::vect(PWS.transform)
 PWS.100point.randompool <- PWS.transform %>% dplyr::filter(str_detect(ID, "Pool")) %>% st_sample(PWS.transform, size = 30, type = "random")
 plot(PWS.100point.randompool)
 
@@ -385,4 +390,10 @@ sqrt(mean(typeregular_100[]^2, na.rm=TRUE))
 sqrt(mean(typerandom_100[]^2, na.rm=TRUE))
 
 #Least error is random sampling! Worst is oversampling a single pool while sampling only a few other points
+```
+
+```{r}
+random <-  PWS.random.raster - PWSrasterized_groundtruth
+plot(random)
+sqrt(mean(random[]^2, na.rm=TRUE))
 ```
