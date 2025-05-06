@@ -75,7 +75,7 @@ Now that we have the ground truth, we want to create some sampling strategies. O
 
 ```{r Randomized point distribution}
 
-#Creating 50 random sampling points
+#Creating 60 random sampling points
 #The cool thing about this code is that they are random every time!! 
 #PWSvect <- terra::vect(PWS.transform)
 PWS.point.random <- st_sample(PWS.transform, size = 60, type = "random")
@@ -154,7 +154,7 @@ crs(PWS.eprandom.raster)
 ```
 
 ```{r Regular point distribution}
-#Creating 50 grid sampling points
+#Creating 60 grid sampling points
 #PWSvect <- terra::vect(PWS.transform)
 PWS.point.regular <- st_sample(PWS.transform, size = 60, type = "regular")
 plot(PWS.point.regular)
