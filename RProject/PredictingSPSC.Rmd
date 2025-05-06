@@ -29,7 +29,6 @@ glimpse(p.PWS)
 glimpse(e.PWS)
 
 #Check validity or make an invalid geometry valid
-Description
 p.PWS %>% sf::st_is_valid()
 e.PWS %>% sf::st_is_valid()
 
@@ -75,6 +74,7 @@ crs(PWSrasterized_groundtruth)
 Now that we have the ground truth, we want to create some sampling strategies. Our goal is to see which one will produce the least amount of error and will be the closest to our created "ground truth" raster. 
 
 ```{r Randomized point distribution}
+
 #Creating 50 random sampling points
 #The cool thing about this code is that they are random every time!! 
 #PWSvect <- terra::vect(PWS.transform)
@@ -231,11 +231,11 @@ crs(PWS.epreg.raster)
 
 #First sample from pools
 #PWSvect <- terra::vect(PWS.transform)
-PWS.point.pool8 <- PWS.transform %>% dplyr::filter(ID == "Pool 9") %>% st_sample(., size = 30, type = "random")
-plot(PWS.point.pool8)
+PWS.point.pool9 <- PWS.transform %>% dplyr::filter(ID == "Pool 9") %>% st_sample(., size = 30, type = "random")
+plot(PWS.point.pool9)
 
-PWS.point.pool8sf <- st_sf(geometry = PWS.point.pool8)
-PWS.point.pool8join <- st_join(PWS.point.pool8sf, PWS.transform)
+PWS.point.pool9sf <- st_sf(geometry = PWS.point.pool9)
+PWS.point.pool9join <- st_join(PWS.point.pool9sf, PWS.transform)
 
 #Then sample from elevation
 PWS.point.randomdis <- PWS.transform %>%  dplyr::filter(ID != "Pool 9") %>%st_sample(PWS.transform, size = 50, type = "random")
@@ -248,28 +248,28 @@ PWS.point.randomdisjoin <- st_join(PWS.point.randomdissf, PWS.transform)
 
 
 #Bind points together after sampling from different features
-PWS_point_pool8andrandom <- st_union(PWS.point.pool8join, PWS.point.randomdisjoin)
-plot(PWS_point_pool8andrandom)
+PWS_point_pool9andrandom <- st_union(PWS.point.pool9join, PWS.point.randomdisjoin)
+plot(PWS_point_pool9andrandom)
 
 
 #Convert sample points to sf
-PWSpool8ran_sf <- sf::st_as_sf(PWS_point_pool8andrandom)
+PWSpool9ran_sf <- sf::st_as_sf(PWS_point_pool9andrandom)
 #Then to SpatialPointsDataFrame
-PWSpool8ran_sp <- as(PWSpool8ran_sf, "Spatial")
+PWSpool9ran_sp <- as(PWSpool9ran_sf, "Spatial")
 
 # Create empty raster grid for interpolation
 grid <- as.data.frame(xyFromCell(PWSrasterized_groundtruth, 1:ncell(PWSrasterized_groundtruth)))
 sp::coordinates(grid) <- ~ x + y
 gridded(grid) <- TRUE
-proj4string(grid) <- proj4string(PWSpool8ran_sp)
+proj4string(grid) <- proj4string(PWSpool9ran_sp)
 
 # Interpolate using gstat::idw
-PWS.pool8ran.idw <- idw(SPSC ~ 1, PWSpool8ran_sp, newdata = grid, idp = 2)
+PWS.pool9ran.idw <- idw(SPSC ~ 1, PWSpool9ran_sp, newdata = grid, idp = 2)
 
 # Convert to terra raster
-PWS.pool8ran.raster <- rast(PWS.pool8ran.idw, crs = "EPSG:3857")
-plot(PWS.pool8ran.raster)
-crs(PWS.pool8ran.raster)
+PWS.pool9ran.raster <- rast(PWS.pool9ran.idw, crs = "EPSG:3857")
+plot(PWS.pool9ran.raster)
+crs(PWS.pool9ran.raster)
 ```
 
 ```{r Regular point distribution within polygons based on type, 100 points in total}
@@ -366,7 +366,7 @@ Currently we have 7 different sampling types. Now it is time to calculate those 
 
 random <-  PWS.random.raster - PWSrasterized_groundtruth
 regular <- PWS.regular.raster - PWSrasterized_groundtruth
-pool <- PWS.pool8ran.raster - PWSrasterized_groundtruth
+pool <- PWS.pool9ran.raster - PWSrasterized_groundtruth
 typerandom <- PWS.eprandom.raster - PWSrasterized_groundtruth
 typeregular <- PWS.epreg.raster - PWSrasterized_groundtruth
 typeregular_100 <- PWS.epreg100.raster - PWSrasterized_groundtruth
@@ -390,10 +390,4 @@ sqrt(mean(typeregular_100[]^2, na.rm=TRUE))
 sqrt(mean(typerandom_100[]^2, na.rm=TRUE))
 
 #Least error is random sampling! Worst is oversampling a single pool while sampling only a few other points
-```
-
-```{r}
-random <-  PWS.random.raster - PWSrasterized_groundtruth
-plot(random)
-sqrt(mean(random[]^2, na.rm=TRUE))
 ```
