@@ -389,5 +389,4 @@ sqrt(mean(typeregular[]^2, na.rm=TRUE))
 sqrt(mean(typeregular_100[]^2, na.rm=TRUE))
 sqrt(mean(typerandom_100[]^2, na.rm=TRUE))
 
-#Least error is random sampling! Worst is oversampling a single pool while sampling only a few other points
 ```
